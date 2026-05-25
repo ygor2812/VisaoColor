@@ -1,4 +1,4 @@
-package com.vision
+package com.visaocolor
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge
