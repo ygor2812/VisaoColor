@@ -1,4 +1,4 @@
-
+package com.visaocolor.controllers
 import com.visaocolor.models.ColorBlindnessProfile
 import com.visaocolor.models.ColorBlindnessType
 import com.visaocolor.repositories.LocalStorageRepository
