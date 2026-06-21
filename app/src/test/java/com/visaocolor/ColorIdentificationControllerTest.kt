@@ -1,27 +1,49 @@
 package com.visaocolor
+
 import com.visaocolor.controllers.ColorIdentificationController
 import com.visaocolor.repositories.SessionColorRepository
 import com.visaocolor.services.ColorAnalyzer
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.verify
-import org.mockito.kotlin.whenever
 
 class ColorIdentificationControllerTest {
 
     @Test
-    fun identifyDeveConsultarAnalyzerESalvarNoHistorico() {
-        val analyzer = mock<ColorAnalyzer>()
-        whenever(analyzer.identifyColor(255, 0, 0)).thenReturn("Vermelho")
+    fun identificarDeveRetornarCorESalvarNoHistorico() {
+        val analisador = ColorAnalyzer()
+        val historico = SessionColorRepository()
+        val controller = ColorIdentificationController(analisador, historico)
 
-        val history = SessionColorRepository()
-        val controller = ColorIdentificationController(analyzer, history)
+        val resultado = controller.identificar(255, 0, 0)
 
-        val resultado = controller.identify(255, 0, 0)
+        assertEquals("Vermelho", resultado.nome)
+        assertEquals(1, controller.obterHistorico().size)
+    }
 
-        assertEquals("Vermelho", resultado.name)
-        assertEquals(1, controller.getHistory().size)
-        verify(analyzer).identifyColor(255, 0, 0)
+    @Test
+    fun multiplasIdentificacoesDevemAcumular() {
+        val controller = ColorIdentificationController(
+            ColorAnalyzer(),
+            SessionColorRepository()
+        )
+
+        controller.identificar(255, 0, 0)
+        controller.identificar(0, 255, 0)
+        controller.identificar(0, 0, 255)
+
+        assertEquals(3, controller.obterHistorico().size)
+    }
+
+    @Test
+    fun limparHistoricoDeveEsvaziar() {
+        val controller = ColorIdentificationController(
+            ColorAnalyzer(),
+            SessionColorRepository()
+        )
+
+        controller.identificar(255, 0, 0)
+        controller.limparHistorico()
+
+        assertEquals(0, controller.obterHistorico().size)
     }
 }

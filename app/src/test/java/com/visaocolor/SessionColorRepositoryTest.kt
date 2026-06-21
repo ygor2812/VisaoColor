@@ -1,4 +1,5 @@
 package com.visaocolor
+
 import com.visaocolor.repositories.SessionColorRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -10,27 +11,27 @@ class SessionColorRepositoryTest {
     private lateinit var repo: SessionColorRepository
 
     @Before
-    fun setup() {
+    fun configurar() {
         repo = SessionColorRepository()
     }
 
     @Test
     fun deveComecarVazio() {
-        assertTrue(repo.getAll().isEmpty())
+        assertTrue(repo.obterTodas().isEmpty())
     }
 
     @Test
     fun deveAdicionarCorAoHistorico() {
-        repo.addColor("Vermelho", 255, 0, 0)
-        assertEquals(1, repo.getAll().size)
-        assertEquals("Vermelho", repo.getAll()[0].name)
+        repo.adicionarCor("Vermelho", 255, 0, 0)
+        assertEquals(1, repo.obterTodas().size)
+        assertEquals("Vermelho", repo.obterTodas()[0].nome)
     }
 
     @Test
-    fun clearDeveEsvaziarOHistorico() {
-        repo.addColor("Verde", 0, 255, 0)
-        repo.addColor("Azul", 0, 0, 255)
-        repo.clear()
-        assertTrue(repo.getAll().isEmpty())
+    fun limparDeveEsvaziarOHistorico() {
+        repo.adicionarCor("Verde", 0, 255, 0)
+        repo.adicionarCor("Azul", 0, 0, 255)
+        repo.limpar()
+        assertTrue(repo.obterTodas().isEmpty())
     }
 }

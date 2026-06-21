@@ -1,4 +1,5 @@
 package com.visaocolor
+
 import com.visaocolor.services.LightingMonitor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -9,33 +10,33 @@ class LightingMonitorTest {
     private val monitor = LightingMonitor()
 
     @Test
-    fun ambienteEscuroDeveRetornarTooDark() {
-        val status = monitor.checkStatus(10)
-        assertEquals(LightingMonitor.Status.TOO_DARK, status)
+    fun ambienteEscuroDeveRetornarEscuro() {
+        val status = monitor.verificarStatus(10)
+        assertEquals(LightingMonitor.Status.ESCURO, status)
     }
 
     @Test
     fun ambienteNormalDeveRetornarOk() {
-        val status = monitor.checkStatus(128)
+        val status = monitor.verificarStatus(128)
         assertEquals(LightingMonitor.Status.OK, status)
     }
 
     @Test
-    fun ambienteMuitoIluminadoDeveRetornarTooBright() {
-        val status = monitor.checkStatus(250)
-        assertEquals(LightingMonitor.Status.TOO_BRIGHT, status)
+    fun ambienteMuitoIluminadoDeveRetornarClaro() {
+        val status = monitor.verificarStatus(250)
+        assertEquals(LightingMonitor.Status.CLARO, status)
     }
 
     @Test
     fun luminanciaPretaDeveSerZero() {
         val pixels = listOf(intArrayOf(0, 0, 0))
-        assertEquals(0, monitor.averageLuminance(pixels))
+        assertEquals(0, monitor.luminanciaMedia(pixels))
     }
 
     @Test
-    fun atualizarThresholdsComMinMaiorDeveDarErro() {
+    fun atualizarLimitesComMinimoMaiorDeveDarErro() {
         assertThrows(IllegalArgumentException::class.java) {
-            monitor.updateThresholds(200, 50)
+            monitor.atualizarLimites(200, 50)
         }
     }
 }

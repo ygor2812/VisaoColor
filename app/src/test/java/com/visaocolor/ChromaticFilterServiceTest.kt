@@ -8,26 +8,26 @@ import org.junit.Test
 
 class ChromaticFilterServiceTest {
 
-    private val service = ChromaticFilterService()
+    private val servico = ChromaticFilterService()
 
     @Test
     fun matrizDeveTer9Valores() {
-        val matrix = service.getMatrixFor(ColorBlindnessType.DEUTERANOPIA)
-        assertEquals(9, matrix.size)
+        val matriz = servico.obterMatrizPara(ColorBlindnessType.DEUTERANOPIA)
+        assertEquals(9, matriz.size)
     }
 
     @Test
     fun matrizNoneDeveSerIdentidade() {
-        val matrix = service.getMatrixFor(ColorBlindnessType.NONE)
-        assertEquals(1f, matrix[0], 0.001f)
-        assertEquals(1f, matrix[4], 0.001f)
-        assertEquals(1f, matrix[8], 0.001f)
+        val matriz = servico.obterMatrizPara(ColorBlindnessType.NONE)
+        assertEquals(1f, matriz[0], 0.001f)
+        assertEquals(1f, matriz[4], 0.001f)
+        assertEquals(1f, matriz[8], 0.001f)
     }
 
     @Test
     fun aplicarMatrizIdentidadeDeveManterPixel() {
-        val identity = service.getMatrixFor(ColorBlindnessType.NONE)
-        val resultado = service.applyFilter(100, 150, 200, identity)
+        val identidade = servico.obterMatrizPara(ColorBlindnessType.NONE)
+        val resultado = servico.aplicarFiltro(100, 150, 200, identidade)
         assertEquals(100, resultado[0])
         assertEquals(150, resultado[1])
         assertEquals(200, resultado[2])
@@ -35,8 +35,8 @@ class ChromaticFilterServiceTest {
 
     @Test
     fun valoresDevemFicarEntre0e255() {
-        val matrix = service.getMatrixFor(ColorBlindnessType.DEUTERANOPIA)
-        val resultado = service.applyFilter(255, 255, 255, matrix)
+        val matriz = servico.obterMatrizPara(ColorBlindnessType.DEUTERANOPIA)
+        val resultado = servico.aplicarFiltro(255, 255, 255, matriz)
         for (valor in resultado) {
             assertTrue(valor in 0..255)
         }
