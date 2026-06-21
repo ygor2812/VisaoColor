@@ -1,12 +1,14 @@
 package com.visaocolor.models
+
 import android.graphics.RectF
 
+// um objeto detectado pela IA
 data class ObjectDetection(
-    val objectName: String,
-    val boundingBox: RectF,
-    val confidence: Float
+    val nomeObjeto: String,
+    val caixaDelimitadora: RectF,
+    val confianca: Float
 ) {
-    fun isLowConfidence(): Boolean {
-        return confidence < 0.7f
+    fun confiancaBaixa(): Boolean {
+        return confianca < 0.7f
     }
 }

@@ -1,38 +1,43 @@
 package com.visaocolor.services
-//Aumento de Brilho
+
+// ajusta brilho, contraste e mistura o filtro com a imagem original
 class ImageProcessingService {
-    fun adjustBrightness(rgb: IntArray, brightness: Int): IntArray {
-        // converte de -100..100 pra -255..255
-        val delta = (brightness * 2.55).toInt()
+
+    // aumenta ou diminui o brilho de um pixel
+    fun ajustarBrilho(rgb: IntArray, brilho: Int): IntArray {
+        val delta = (brilho * 2.55).toInt()
         return intArrayOf(
             (rgb[0] + delta).coerceIn(0, 255),
             (rgb[1] + delta).coerceIn(0, 255),
             (rgb[2] + delta).coerceIn(0, 255)
         )
     }
-    //Contraste -/+
-    fun adjustContrast(rgb: IntArray, contrast: Int): IntArray {
-        val factor = contrast / 100f
+
+    // aumenta ou diminui o contraste
+    fun ajustarContraste(rgb: IntArray, contraste: Int): IntArray {
+        val fator = contraste / 100f
         return intArrayOf(
-            applyContrastFactor(rgb[0], factor),
-            applyContrastFactor(rgb[1], factor),
-            applyContrastFactor(rgb[2], factor)
+            aplicarFatorContraste(rgb[0], fator),
+            aplicarFatorContraste(rgb[1], fator),
+            aplicarFatorContraste(rgb[2], fator)
         )
     }
 
-    private fun applyContrastFactor(value: Int, factor: Float): Int {
-        val centered = value - 128
-        val result = (centered * factor + 128).toInt()
-        return result.coerceIn(0, 255)
+    private fun aplicarFatorContraste(valor: Int, fator: Float): Int {
+        val centralizado = valor - 128
+        val resultado = (centralizado * fator + 128).toInt()
+        return resultado.coerceIn(0, 255)
     }
-    //Mix proporcional da imagem original com a imagem com filtro
-    fun blend(original: IntArray, filtered: IntArray, intensity: Int): IntArray {
-        val alpha = intensity / 100f
-        val result = IntArray(3)
+
+    // mistura proporcionalmente a imagem original com a filtrada
+    // intensidade=0 mostra original, intensidade=100 mostra filtro puro
+    fun misturar(original: IntArray, filtrado: IntArray, intensidade: Int): IntArray {
+        val alfa = intensidade / 100f
+        val resultado = IntArray(3)
         for (i in 0..2) {
-            result[i] = (original[i] * (1 - alpha) + filtered[i] * alpha).toInt()
-            result[i] = result[i].coerceIn(0, 255)
+            resultado[i] = (original[i] * (1 - alfa) + filtrado[i] * alfa).toInt()
+            resultado[i] = resultado[i].coerceIn(0, 255)
         }
-        return result
+        return resultado
     }
 }

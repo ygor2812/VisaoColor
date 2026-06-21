@@ -1,32 +1,36 @@
 package com.visaocolor.services
+
 import com.visaocolor.models.ObjectDetection
+
+// motor da deteccao de objetos com TensorFlow Lite
+// vai ser usado o modelo MobileNet SSD treinado no dataset COCO
 class ObjectDetectionEngine {
-    var modelName = "ssd_mobilenet_v1.tflite"
-    var minConfidence = 0.5f
-    private var paused = false
-    //ainda a ser implementado, aqui vai ser carregado o modelo tflite(TensorFlow)
-    fun loadModel() {
-        // val tfliteModel = FileUtil.loadMappedFile(context, modelName)
-        // interpreter = Interpreter(tfliteModel)
+
+    var nomeModelo = "ssd_mobilenet_v1.tflite"
+    var confiancaMinima = 0.5f
+    private var pausado = false
+
+    // A fazer no Modulo 4: carregar o modelo TFLite aqui
+    fun carregarModelo() {
     }
 
-    //A fazer: Rodar inferencia no frame
-    fun detect(frame: Any): List<ObjectDetection> {
-        if (paused) return emptyList()
+    // A fazer no Modulo 4: rodar inferencia no frame
+    fun detectar(frame: Any): List<ObjectDetection> {
+        if (pausado) return emptyList()
         return emptyList()
     }
 
-    fun filterByConfidence(detections: List<ObjectDetection>): List<ObjectDetection> {
-        return detections.filter { it.confidence >= minConfidence }
+    fun filtrarPorConfianca(deteccoes: List<ObjectDetection>): List<ObjectDetection> {
+        return deteccoes.filter { it.confianca >= confiancaMinima }
     }
 
-    fun pause() {
-        paused = true
+    fun pausar() {
+        pausado = true
     }
 
-    fun resume() {
-        paused = false
+    fun retomar() {
+        pausado = false
     }
 
-    fun isPaused() = paused
+    fun estaPausado() = pausado
 }

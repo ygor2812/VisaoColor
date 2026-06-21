@@ -15,51 +15,50 @@ import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
-    private lateinit var startup: StartupController
-//Pedir permissao pra uso da camera
-    private val cameraPermission = registerForActivityResult(
+    private lateinit var inicializacao: StartupController
+
+    // pede permissao de camera
+    private val permissaoCamera = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            startCamera()
+    ) { concedida ->
+        if (concedida) {
+            iniciarCamera()
         } else {
             Toast.makeText(this, "Sem permissao de camera o app nao funciona", Toast.LENGTH_LONG).show()
         }
     }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        val storage = LocalStorageRepository(applicationContext)
-        startup = StartupController(storage)
+        val armazenamento = LocalStorageRepository(applicationContext)
+        inicializacao = StartupController(armazenamento)
 
-        checkStartup()
-        askCameraPermission()
+        verificarInicializacao()
+        solicitarPermissaoCamera()
     }
 
-    private fun checkStartup() = lifecycleScope.launch {
-        val firstRun = startup.isFirstAccess()
-        val termsOk = startup.didAcceptTerms()
+    private fun verificarInicializacao() = lifecycleScope.launch {
+        val primeiroAcesso = inicializacao.ehPrimeiroAcesso()
+        val termosOk = inicializacao.aceitouTermos()
 
         binding.statusText.text = when {
-            firstRun && !termsOk -> "Primeiro acesso - mostrar termos e tutorial"
-            !termsOk -> "Falta aceitar os termos"
+            primeiroAcesso && !termosOk -> "Primeiro acesso - mostrar termos e tutorial"
+            !termosOk -> "Falta aceitar os termos"
             else -> "VisaoColor pronto"
         }
     }
-
-    private fun askCameraPermission() {
-        val check = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-        if (check == PackageManager.PERMISSION_GRANTED) {
-            startCamera()
+    private fun solicitarPermissaoCamera() {
+        val verificacao = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+        if (verificacao == PackageManager.PERMISSION_GRANTED) {
+            iniciarCamera()
         } else {
-            cameraPermission.launch(Manifest.permission.CAMERA)
+            permissaoCamera.launch(Manifest.permission.CAMERA)
         }
     }
-    private fun startCamera() {
-        //A fazer Ainda: Integrar CameraX nessa parte
+    private fun iniciarCamera() {
+        // A fazer ainda: integrar CameraX nessa parte
         binding.cameraStatus.text = "Camera autorizada"
     }
 }

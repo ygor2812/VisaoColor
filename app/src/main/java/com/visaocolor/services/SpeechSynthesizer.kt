@@ -1,49 +1,51 @@
 package com.visaocolor.services
+
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import com.visaocolor.models.VoiceSettings
 import java.util.Locale
-//Ira usar o TTS nativo do android para falar os nomes das cores e objetos
-class SpeechSynthesizer(private val context: Context) {
+
+// usa o TTS nativo do Android pra falar os nomes das cores e objetos
+class SpeechSynthesizer(private val contexto: Context) {
 
     private var tts: TextToSpeech? = null
-    private var settings = VoiceSettings()
-    private var ready = false
+    private var configuracoes = VoiceSettings()
+    private var pronto = false
 
-    fun start(onReady: (Boolean) -> Unit = {}) {
-        tts = TextToSpeech(context) { status ->
-            ready = status == TextToSpeech.SUCCESS
-            if (ready) {
+    fun iniciar(aoFicarPronto: (Boolean) -> Unit = {}) {
+        tts = TextToSpeech(contexto) { status ->
+            pronto = status == TextToSpeech.SUCCESS
+            if (pronto) {
                 tts?.language = Locale("pt", "BR")
-                tts?.setSpeechRate(settings.speed)
+                tts?.setSpeechRate(configuracoes.velocidade)
             }
-            onReady(ready)
+            aoFicarPronto(pronto)
         }
     }
 
-    fun speak(text: String) {
-        if (!ready || !settings.active) return
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "visaocolor")
+    fun falar(texto: String) {
+        if (!pronto || !configuracoes.ativo) return
+        tts?.speak(texto, TextToSpeech.QUEUE_FLUSH, null, "visaocolor")
     }
 
-    fun stop() {
+    fun parar() {
         tts?.stop()
     }
 
-    fun setActive(value: Boolean) {
-        settings = settings.copy(active = value)
-        if (!value) stop()
+    fun definirAtivo(valor: Boolean) {
+        configuracoes = configuracoes.copy(ativo = valor)
+        if (!valor) parar()
     }
 
-    fun setSpeed(speed: Float) {
-        settings = settings.copy(speed = speed)
-        tts?.setSpeechRate(speed)
+    fun definirVelocidade(velocidade: Float) {
+        configuracoes = configuracoes.copy(velocidade = velocidade)
+        tts?.setSpeechRate(velocidade)
     }
 
-    fun shutdown() {
+    fun encerrar() {
         tts?.stop()
         tts?.shutdown()
         tts = null
-        ready = false
+        pronto = false
     }
 }

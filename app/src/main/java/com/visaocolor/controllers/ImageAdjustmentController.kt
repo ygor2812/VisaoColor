@@ -1,36 +1,35 @@
 package com.visaocolor.controllers
-
 import com.visaocolor.models.ImageSettings
 import com.visaocolor.repositories.LocalStorageRepository
 
-class ImageAdjustmentController(private val storage: LocalStorageRepository) {
+class ImageAdjustmentController(private val armazenamento: LocalStorageRepository) {
 
-    private var current = ImageSettings()
+    private var atual = ImageSettings()
 
-    suspend fun setBrightness(value: Int) {
-        current = current.copy(brightness = value)
-        storage.saveBrightness(value)
+    suspend fun definirBrilho(valor: Int) {
+        atual = atual.copy(brilho = valor)
+        armazenamento.salvarBrilho(valor)
     }
 
-    suspend fun setContrast(value: Int) {
-        current = current.copy(contrast = value)
-        storage.saveContrast(value)
+    suspend fun definirContraste(valor: Int) {
+        atual = atual.copy(contraste = valor)
+        armazenamento.salvarContraste(valor)
     }
 
-    suspend fun setIntensity(value: Int) {
-        current = current.copy(intensity = value)
-        storage.saveIntensity(value)
+    suspend fun definirIntensidade(valor: Int) {
+        atual = atual.copy(intensidade = valor)
+        armazenamento.salvarIntensidade(valor)
     }
 
-    suspend fun resetAll() {
-        current = ImageSettings()
-        storage.resetImageSettings()
+    suspend fun restaurarTudo() {
+        atual = ImageSettings()
+        armazenamento.restaurarConfiguracoesImagem()
     }
 
-    suspend fun loadSaved(): ImageSettings {
-        current = storage.getImageSettings()
-        return current
+    suspend fun carregarSalvas(): ImageSettings {
+        atual = armazenamento.obterConfiguracoesImagem()
+        return atual
     }
 
-    fun get() = current
+    fun obter() = atual
 }

@@ -1,4 +1,5 @@
 package com.visaocolor.repositories
+
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -10,80 +11,90 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-class LocalStorageRepository(private val context: Context) {
+// salva e recupera as configuracoes do app no DataStore
+class LocalStorageRepository(private val contexto: Context) {
 
-    private val dataStore = context.appPrefs
+    private val dataStore = contexto.appPrefs
+
+    // chaves usadas pra salvar cada configuracao
     companion object {
-        private val KEY_PROFILE = stringPreferencesKey("profile")
-        private val KEY_FILTER_ON = booleanPreferencesKey("filter_on")
-        private val KEY_BRIGHTNESS = intPreferencesKey("brightness")
-        private val KEY_CONTRAST = intPreferencesKey("contrast")
-        private val KEY_INTENSITY = intPreferencesKey("intensity")
-        private val KEY_FIRST_RUN = booleanPreferencesKey("first_run")
-        private val KEY_TERMS_OK = booleanPreferencesKey("terms_ok")
-    }
-//Perfil
-    suspend fun saveProfile(profile: ColorBlindnessType) {
-        dataStore.edit { it[KEY_PROFILE] = profile.name }
+        private val CHAVE_PERFIL = stringPreferencesKey("perfil")
+        private val CHAVE_FILTRO_ATIVO = booleanPreferencesKey("filtro_ativo")
+        private val CHAVE_BRILHO = intPreferencesKey("brilho")
+        private val CHAVE_CONTRASTE = intPreferencesKey("contraste")
+        private val CHAVE_INTENSIDADE = intPreferencesKey("intensidade")
+        private val CHAVE_PRIMEIRO_ACESSO = booleanPreferencesKey("primeiro_acesso")
+        private val CHAVE_TERMOS_OK = booleanPreferencesKey("termos_ok")
     }
 
-    fun getProfile(): Flow<ColorBlindnessType> {
+    //Perfil
+    suspend fun salvarPerfil(perfil: ColorBlindnessType) {
+        dataStore.edit { it[CHAVE_PERFIL] = perfil.name }
+    }
+
+    fun obterPerfil(): Flow<ColorBlindnessType> {
         return dataStore.data.map {
-            val saved = it[KEY_PROFILE] ?: ColorBlindnessType.NONE.name
-            ColorBlindnessType.fromName(saved)
+            val salvo = it[CHAVE_PERFIL] ?: ColorBlindnessType.NONE.name
+            ColorBlindnessType.apartirDoNome(salvo)
         }
     }
-    //Filtro ON/OFF
-    suspend fun setFilterActive(active: Boolean) {
-        dataStore.edit { it[KEY_FILTER_ON] = active }
-    }
-    suspend fun isFilterActive(): Boolean {
-        return dataStore.data.map { it[KEY_FILTER_ON] ?: false }.first()
-    }
-    //Brilho, Intensidade e Contraste
-    suspend fun saveBrightness(value: Int) {
-        dataStore.edit { it[KEY_BRIGHTNESS] = value }
+
+    //Filtro ligado/desligado
+    suspend fun definirFiltroAtivo(ativo: Boolean) {
+        dataStore.edit { it[CHAVE_FILTRO_ATIVO] = ativo }
     }
 
-    suspend fun saveContrast(value: Int) {
-        dataStore.edit { it[KEY_CONTRAST] = value }
+    suspend fun filtroEstaAtivo(): Boolean {
+        return dataStore.data.map { it[CHAVE_FILTRO_ATIVO] ?: false }.first()
     }
 
-    suspend fun saveIntensity(value: Int) {
-        dataStore.edit { it[KEY_INTENSITY] = value }
+    //Brilho, contraste, intensidade
+    suspend fun salvarBrilho(valor: Int) {
+        dataStore.edit { it[CHAVE_BRILHO] = valor }
     }
 
-    suspend fun getImageSettings(): ImageSettings {
+    suspend fun salvarContraste(valor: Int) {
+        dataStore.edit { it[CHAVE_CONTRASTE] = valor }
+    }
+
+    suspend fun salvarIntensidade(valor: Int) {
+        dataStore.edit { it[CHAVE_INTENSIDADE] = valor }
+    }
+
+    suspend fun obterConfiguracoesImagem(): ImageSettings {
         return dataStore.data.map {
             ImageSettings(
-                brightness = it[KEY_BRIGHTNESS] ?: 0,
-                contrast = it[KEY_CONTRAST] ?: 100,
-                intensity = it[KEY_INTENSITY] ?: 100
+                brilho = it[CHAVE_BRILHO] ?: 0,
+                contraste = it[CHAVE_CONTRASTE] ?: 100,
+                intensidade = it[CHAVE_INTENSIDADE] ?: 100
             )
         }.first()
     }
-    //RESET Padrao de fabrica
-    suspend fun resetImageSettings() {
+
+    // restaura tudo pro padrao
+    suspend fun restaurarConfiguracoesImagem() {
         dataStore.edit {
-            it[KEY_BRIGHTNESS] = 0
-            it[KEY_CONTRAST] = 100
-            it[KEY_INTENSITY] = 100
+            it[CHAVE_BRILHO] = 0
+            it[CHAVE_CONTRASTE] = 100
+            it[CHAVE_INTENSIDADE] = 100
         }
     }
 
-    suspend fun isFirstRun(): Boolean {
-        return dataStore.data.map { it[KEY_FIRST_RUN] ?: true }.first()
+    //Primeiro acesso
+    suspend fun ehPrimeiroAcesso(): Boolean {
+        return dataStore.data.map { it[CHAVE_PRIMEIRO_ACESSO] ?: true }.first()
     }
 
-    suspend fun markAsOpened() {
-        dataStore.edit { it[KEY_FIRST_RUN] = false }
-    }
-    //Termos
-    suspend fun acceptTerms() {
-        dataStore.edit { it[KEY_TERMS_OK] = true }
+    suspend fun marcarComoAberto() {
+        dataStore.edit { it[CHAVE_PRIMEIRO_ACESSO] = false }
     }
 
-    suspend fun hasAcceptedTerms(): Boolean {
-        return dataStore.data.map { it[KEY_TERMS_OK] ?: false }.first()
+    //Aceite dos termos
+    suspend fun aceitarTermos() {
+        dataStore.edit { it[CHAVE_TERMOS_OK] = true }
+    }
+
+    suspend fun aceitouTermos(): Boolean {
+        return dataStore.data.map { it[CHAVE_TERMOS_OK] ?: false }.first()
     }
 }

@@ -1,20 +1,21 @@
 package com.visaocolor.controllers
-
 import com.visaocolor.models.ColorRecord
 import com.visaocolor.repositories.SessionColorRepository
 import com.visaocolor.services.ColorAnalyzer
 
 class ColorIdentificationController(
-    private val analyzer: ColorAnalyzer,
-    private val history: SessionColorRepository
+    private val analisador: ColorAnalyzer,
+    private val historico: SessionColorRepository
 ) {
-    fun identify(r: Int, g: Int, b: Int): ColorRecord {
-        val name = analyzer.identifyColor(r, g, b)
-        history.addColor(name, r, g, b)
-        return ColorRecord(name, r, g, b)
+
+    // identifica a cor de um pixel e salva no historico
+    fun identificar(r: Int, g: Int, b: Int): ColorRecord {
+        val nome = analisador.identificarCor(r, g, b)
+        historico.adicionarCor(nome, r, g, b)
+        return ColorRecord(nome, r, g, b)
     }
 
-    fun getHistory(): List<ColorRecord> = history.getAll()
+    fun obterHistorico(): List<ColorRecord> = historico.obterTodas()
 
-    fun clearHistory() = history.clear()
+    fun limparHistorico() = historico.limpar()
 }

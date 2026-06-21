@@ -6,36 +6,36 @@ import com.visaocolor.services.ChromaticFilterService
 import kotlinx.coroutines.flow.first
 
 class ColorFilterController(
-    private val filterService: ChromaticFilterService,
-    private val storage: LocalStorageRepository
+    private val servicoFiltro: ChromaticFilterService,
+    private val armazenamento: LocalStorageRepository
 ) {
-    private var currentProfile: ColorBlindnessProfile? = null
+    private var perfilAtual: ColorBlindnessProfile? = null
 
-    suspend fun changeProfile(type: ColorBlindnessType): ColorBlindnessProfile {
-        val profile = filterService.createProfile(type, active = true)
-        currentProfile = profile
-        storage.saveProfile(type)
-        storage.setFilterActive(true)
-        return profile
+    suspend fun trocarPerfil(tipo: ColorBlindnessType): ColorBlindnessProfile {
+        val perfil = servicoFiltro.criarPerfil(tipo, ativo = true)
+        perfilAtual = perfil
+        armazenamento.salvarPerfil(tipo)
+        armazenamento.definirFiltroAtivo(true)
+        return perfil
     }
 
-    suspend fun turnOff() {
-        currentProfile = currentProfile?.copy(active = false)
-        storage.setFilterActive(false)
+    suspend fun desligar() {
+        perfilAtual = perfilAtual?.copy(ativo = false)
+        armazenamento.definirFiltroAtivo(false)
     }
 
-    suspend fun turnOn() {
-        currentProfile = currentProfile?.copy(active = true)
-        storage.setFilterActive(true)
+    suspend fun ligar() {
+        perfilAtual = perfilAtual?.copy(ativo = true)
+        armazenamento.definirFiltroAtivo(true)
     }
 
-    suspend fun loadLast(): ColorBlindnessProfile {
-        val savedType = storage.getProfile().first()
-        val active = storage.isFilterActive()
-        return filterService.createProfile(savedType, active).also {
-            currentProfile = it
+    suspend fun carregarUltimo(): ColorBlindnessProfile {
+        val tipoSalvo = armazenamento.obterPerfil().first()
+        val ativo = armazenamento.filtroEstaAtivo()
+        return servicoFiltro.criarPerfil(tipoSalvo, ativo).also {
+            perfilAtual = it
         }
     }
 
-    fun getCurrent() = currentProfile
+    fun obterAtual() = perfilAtual
 }

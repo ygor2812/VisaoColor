@@ -1,8 +1,13 @@
 package com.visaocolor.services
+
 import kotlin.math.sqrt
 
+// identifica o nome da cor mais proxima de um pixel RGB
+// usa distancia euclidiana - simples mas funciona pra cores basicas
 class ColorAnalyzer {
-    private val colorMap = mapOf(
+
+    // banco de cores em portugues
+    private val mapaCores = mapOf(
         "Vermelho" to Triple(255, 0, 0),
         "Verde" to Triple(0, 255, 0),
         "Azul" to Triple(0, 0, 255),
@@ -21,20 +26,23 @@ class ColorAnalyzer {
         "Bege" to Triple(245, 245, 220)
     )
 
-    fun identifyColor(r: Int, g: Int, b: Int): String {
-        var closestName = "Desconhecido"
-        var smallestDistance = Double.MAX_VALUE
-        for ((name, rgb) in colorMap) {
-            val dist = distance(r, g, b, rgb.first, rgb.second, rgb.third)
-            if (dist < smallestDistance) {
-                smallestDistance = dist
-                closestName = name
+    fun identificarCor(r: Int, g: Int, b: Int): String {
+        var nomeMaisProximo = "Desconhecido"
+        var menorDistancia = Double.MAX_VALUE
+
+        for ((nome, rgb) in mapaCores) {
+            val dist = distancia(r, g, b, rgb.first, rgb.second, rgb.third)
+            if (dist < menorDistancia) {
+                menorDistancia = dist
+                nomeMaisProximo = nome
             }
         }
 
-        return closestName
+        return nomeMaisProximo
     }
-    fun distance(r1: Int, g1: Int, b1: Int, r2: Int, g2: Int, b2: Int): Double {
+
+    // calcula a distancia euclidiana entre duas cores no espaco RGB
+    fun distancia(r1: Int, g1: Int, b1: Int, r2: Int, g2: Int, b2: Int): Double {
         val dr = (r1 - r2).toDouble()
         val dg = (g1 - g2).toDouble()
         val db = (b1 - b2).toDouble()

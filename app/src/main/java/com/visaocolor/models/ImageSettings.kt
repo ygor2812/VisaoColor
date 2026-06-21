@@ -1,22 +1,24 @@
 package com.visaocolor.models
+
+// configuracoes de brilho, contraste e intensidade do filtro
 data class ImageSettings(
-    val brightness: Int = 0,      // -100 a +100
-    val contrast: Int = 100,      // 0 a 200 (100 = sem alteração)
-    val intensity: Int = 100      // 0 a 100 (porcentagem do filtro)
+    val brilho: Int = 0,
+    val contraste: Int = 100,
+    val intensidade: Int = 100
 ) {
     init {
-        if (brightness < -100 || brightness > 100) {
-            throw IllegalArgumentException("brilho inválido: $brightness")
+        if (brilho < -100 || brilho > 100) {
+            throw IllegalArgumentException("brilho invalido: $brilho")
         }
-        if (contrast < 0 || contrast > 200) {
-            throw IllegalArgumentException("contraste inválido: $contrast")
+        if (contraste < 0 || contraste > 200) {
+            throw IllegalArgumentException("contraste invalido: $contraste")
         }
-        if (intensity < 0 || intensity > 100) {
-            throw IllegalArgumentException("intensidade inválida: $intensity")
+        if (intensidade < 0 || intensidade > 100) {
+            throw IllegalArgumentException("intensidade invalida: $intensidade")
         }
     }
 
     companion object {
-        val DEFAULT = ImageSettings()
+        val PADRAO = ImageSettings()
     }
 }

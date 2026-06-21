@@ -1,21 +1,21 @@
 package com.visaocolor.controllers
 import com.visaocolor.repositories.LocalStorageRepository
 
-class StartupController(private val storage: LocalStorageRepository) {
+class StartupController(private val armazenamento: LocalStorageRepository) {
 
-    suspend fun isFirstAccess(): Boolean {
-        return storage.isFirstRun()
+    suspend fun ehPrimeiroAcesso(): Boolean {
+        return armazenamento.ehPrimeiroAcesso()
     }
 
-    suspend fun didAcceptTerms(): Boolean {
-        return storage.hasAcceptedTerms()
+    suspend fun aceitouTermos(): Boolean {
+        return armazenamento.aceitouTermos()
     }
 
-    suspend fun acceptTerms() {
-        storage.acceptTerms()
+    suspend fun aceitarTermos() {
+        armazenamento.aceitarTermos()
     }
 
-    suspend fun completeTutorial() {
-        storage.markAsOpened()
+    suspend fun concluirTutorial() {
+        armazenamento.marcarComoAberto()
     }
 }
