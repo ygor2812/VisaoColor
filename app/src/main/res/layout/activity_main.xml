@@ -43,6 +43,68 @@
         app:layout_constraintEnd_toEndOf="parent">
 
         <LinearLayout
+            android:id="@+id/painelAjustes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:paddingBottom="8dp">
+
+            <TextView
+                android:id="@+id/labelBrilho"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Brilho: 0"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+
+            <SeekBar
+                android:id="@+id/sliderBrilho"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="200"
+                android:progress="100" />
+
+            <TextView
+                android:id="@+id/labelContraste"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Contraste: 100"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+
+            <SeekBar
+                android:id="@+id/sliderContraste"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="200"
+                android:progress="100" />
+
+            <TextView
+                android:id="@+id/labelIntensidade"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Intensidade: 100"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+
+            <SeekBar
+                android:id="@+id/sliderIntensidade"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="100"
+                android:progress="100" />
+
+            <Button
+                android:id="@+id/botaoRestaurar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Restaurar padrao"
+                android:textSize="12sp" />
+
+        </LinearLayout>
+
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal">
@@ -76,12 +138,30 @@
 
         </LinearLayout>
 
-        <Button
-            android:id="@+id/botaoLigaDesliga"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_margin="4dp"
-            android:text="Filtro: LIGADO" />
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/botaoLigaDesliga"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_margin="4dp"
+                android:text="Filtro: LIGADO"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/botaoAjustes"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_margin="4dp"
+                android:text="Ajustes"
+                android:textSize="12sp" />
+
+        </LinearLayout>
 
     </LinearLayout>
 
