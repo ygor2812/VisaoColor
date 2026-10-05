@@ -2,46 +2,37 @@ package com.visaocolor.services
 
 import android.content.Context
 import android.speech.tts.TextToSpeech
-import com.visaocolor.models.VoiceSettings
 import java.util.Locale
 
-// usa o TTS nativo do Android pra falar os nomes das cores e objetos
+// Le em voz alta os nomes dos objetos e cores, usando o TTS nativo do Android.
 class SpeechSynthesizer(private val contexto: Context) {
 
     private var tts: TextToSpeech? = null
-    private var configuracoes = VoiceSettings()
     private var pronto = false
+    private var ativo = false
 
-    fun iniciar(aoFicarPronto: (Boolean) -> Unit = {}) {
+    // inicia o mecanismo de voz em portugues do Brasil
+    fun iniciar() {
         tts = TextToSpeech(contexto) { status ->
             pronto = status == TextToSpeech.SUCCESS
             if (pronto) {
                 tts?.language = Locale("pt", "BR")
-                tts?.setSpeechRate(configuracoes.velocidade)
             }
-            aoFicarPronto(pronto)
         }
     }
 
+    // fala um texto (so se estiver pronto e ativado)
     fun falar(texto: String) {
-        if (!pronto || !configuracoes.ativo) return
+        if (!pronto || !ativo) return
         tts?.speak(texto, TextToSpeech.QUEUE_FLUSH, null, "visaocolor")
     }
 
-    fun parar() {
-        tts?.stop()
-    }
-
     fun definirAtivo(valor: Boolean) {
-        configuracoes = configuracoes.copy(ativo = valor)
-        if (!valor) parar()
+        ativo = valor
+        if (!valor) tts?.stop()
     }
 
-    fun definirVelocidade(velocidade: Float) {
-        configuracoes = configuracoes.copy(velocidade = velocidade)
-        tts?.setSpeechRate(velocidade)
-    }
-
+    // libera o recurso quando o app fecha
     fun encerrar() {
         tts?.stop()
         tts?.shutdown()

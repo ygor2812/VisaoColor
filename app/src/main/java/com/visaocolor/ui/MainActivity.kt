@@ -3,8 +3,10 @@ package com.visaocolor.ui
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
+import android.graphics.Paint
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.Log
@@ -26,10 +28,13 @@ import androidx.lifecycle.lifecycleScope
 import com.visaocolor.R
 import com.visaocolor.controllers.ColorIdentificationController
 import com.visaocolor.models.ColorBlindnessType
+import com.visaocolor.models.ObjectDetection
 import com.visaocolor.repositories.LocalStorageRepository
 import com.visaocolor.repositories.SessionColorRepository
 import com.visaocolor.services.BrettelFilterProcessor
 import com.visaocolor.services.ColorAnalyzer
+import com.visaocolor.services.ObjectDetectionEngine
+import com.visaocolor.services.SpeechSynthesizer
 import kotlinx.coroutines.launch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -40,10 +45,15 @@ class MainActivity : AppCompatActivity() {
     private val processadorFiltro = BrettelFilterProcessor()
     private lateinit var armazenamento: LocalStorageRepository
 
+    // identificacao de cor por toque (Modulo 3)
     private val controladorCor = ColorIdentificationController(
         ColorAnalyzer(),
         SessionColorRepository()
     )
+
+    // IA e voz (Modulo 4)
+    private lateinit var motorIA: ObjectDetectionEngine
+    private lateinit var locutor: SpeechSynthesizer
 
     private lateinit var imagemCamera: ImageView
     private lateinit var textoStatus: TextView
@@ -59,6 +69,13 @@ class MainActivity : AppCompatActivity() {
     private var brilho = 0
     private var contraste = 100
     private var intensidade = 100
+
+    // estado da IA e voz
+    private var iaLigada = false
+    private var vozLigada = false
+    @Volatile private var deteccoes: List<ObjectDetection> = emptyList()
+    private var ultimaDeteccaoMs = 0L
+    private var ultimosNomes: Set<String> = emptySet()
 
     private val permissaoCamera = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -79,6 +96,20 @@ class MainActivity : AppCompatActivity() {
 
         armazenamento = LocalStorageRepository(applicationContext)
         executorCamera = Executors.newSingleThreadExecutor()
+
+        // prepara IA e voz
+        motorIA = ObjectDetectionEngine(applicationContext)
+        locutor = SpeechSynthesizer(applicationContext)
+        locutor.iniciar()
+        // carrega o modelo em segundo plano para nao travar a tela
+        Thread {
+            try {
+                motorIA.carregar()
+                Log.d("VisaoColor", "Modelo de IA carregado")
+            } catch (e: Exception) {
+                Log.e("VisaoColor", "Falha ao carregar modelo de IA", e)
+            }
+        }.start()
 
         prepararMarcador()
         configurarToque()
@@ -113,20 +144,14 @@ class MainActivity : AppCompatActivity() {
         if (vw <= 0f || vh <= 0f) return
 
         val escala = maxOf(vw / bmp.width, vh / bmp.height)
-        val desenhadoW = bmp.width * escala
-        val desenhadoH = bmp.height * escala
-        val offX = (vw - desenhadoW) / 2f
-        val offY = (vh - desenhadoH) / 2f
+        val offX = (vw - bmp.width * escala) / 2f
+        val offY = (vh - bmp.height * escala) / 2f
 
         val bx = ((tocX - offX) / escala).toInt().coerceIn(0, bmp.width - 1)
         val by = ((tocY - offY) / escala).toInt().coerceIn(0, bmp.height - 1)
 
         val pixel = bmp.getPixel(bx, by)
-        val r = Color.red(pixel)
-        val g = Color.green(pixel)
-        val b = Color.blue(pixel)
-
-        val registro = controladorCor.identificar(r, g, b)
+        val registro = controladorCor.identificar(Color.red(pixel), Color.green(pixel), Color.blue(pixel))
 
         textoCor.text = "${registro.nome}   ${registro.paraHex()}"
         textoCor.visibility = View.VISIBLE
@@ -175,14 +200,28 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.botaoRestaurar).setOnClickListener {
-            brilho = 0
-            contraste = 100
-            intensidade = 100
+            brilho = 0; contraste = 100; intensidade = 100
             findViewById<SeekBar>(R.id.sliderBrilho).progress = 100
             findViewById<SeekBar>(R.id.sliderContraste).progress = 100
             findViewById<SeekBar>(R.id.sliderIntensidade).progress = 100
             atualizarLabels()
             salvarConfiguracoes()
+        }
+
+        // botao liga/desliga a IA (reconhecimento de objetos)
+        val botaoIA = findViewById<Button>(R.id.botaoIA)
+        botaoIA.setOnClickListener {
+            iaLigada = !iaLigada
+            botaoIA.text = if (iaLigada) "IA: LIGADA" else "IA: OFF"
+            if (!iaLigada) deteccoes = emptyList()
+        }
+
+        // botao liga/desliga a voz
+        val botaoVoz = findViewById<Button>(R.id.botaoVoz)
+        botaoVoz.setOnClickListener {
+            vozLigada = !vozLigada
+            locutor.definirAtivo(vozLigada)
+            botaoVoz.text = if (vozLigada) "Voz: LIGADA" else "Voz: OFF"
         }
 
         atualizarStatus()
@@ -192,28 +231,23 @@ class MainActivity : AppCompatActivity() {
         findViewById<SeekBar>(R.id.sliderBrilho).setOnSeekBarChangeListener(
             object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(sb: SeekBar?, valor: Int, user: Boolean) {
-                    brilho = valor - 100
-                    atualizarLabels()
+                    brilho = valor - 100; atualizarLabels()
                 }
                 override fun onStartTrackingTouch(sb: SeekBar?) {}
                 override fun onStopTrackingTouch(sb: SeekBar?) { salvarConfiguracoes() }
             })
-
         findViewById<SeekBar>(R.id.sliderContraste).setOnSeekBarChangeListener(
             object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(sb: SeekBar?, valor: Int, user: Boolean) {
-                    contraste = valor
-                    atualizarLabels()
+                    contraste = valor; atualizarLabels()
                 }
                 override fun onStartTrackingTouch(sb: SeekBar?) {}
                 override fun onStopTrackingTouch(sb: SeekBar?) { salvarConfiguracoes() }
             })
-
         findViewById<SeekBar>(R.id.sliderIntensidade).setOnSeekBarChangeListener(
             object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(sb: SeekBar?, valor: Int, user: Boolean) {
-                    intensidade = valor
-                    atualizarLabels()
+                    intensidade = valor; atualizarLabels()
                 }
                 override fun onStartTrackingTouch(sb: SeekBar?) {}
                 override fun onStopTrackingTouch(sb: SeekBar?) { salvarConfiguracoes() }
@@ -265,11 +299,173 @@ class MainActivity : AppCompatActivity() {
         val original = rotacionarBitmap(imagem.toBitmap(), rotacao)
         ultimoOriginal = original
 
+        // roda a IA no maximo a cada 600ms (a inferencia e pesada)
+        if (iaLigada) {
+            val agora = System.currentTimeMillis()
+            if (agora - ultimaDeteccaoMs > 600) {
+                ultimaDeteccaoMs = agora
+                try {
+                    deteccoes = motorIA.detectar(original)
+                    anunciar(deteccoes)
+                } catch (e: Exception) {
+                    Log.e("VisaoColor", "Erro na deteccao", e)
+                }
+            }
+        }
+
         val tipoUsar = if (filtroLigado) tipoAtual else ColorBlindnessType.NONE
-        val bitmapFinal = processadorFiltro.aplicar(original, tipoUsar, brilho, contraste, intensidade)
+        var bitmapFinal = processadorFiltro.aplicar(original, tipoUsar, brilho, contraste, intensidade)
+
+        // desenha as caixas dos objetos por cima da imagem
+        if (iaLigada && deteccoes.isNotEmpty()) {
+            bitmapFinal = desenharCaixas(bitmapFinal, deteccoes)
+        }
 
         runOnUiThread { imagemCamera.setImageBitmap(bitmapFinal) }
         imagem.close()
+    }
+
+    // desenha um retangulo fino e o nome de cada objeto detectado
+    private fun desenharCaixas(base: Bitmap, lista: List<ObjectDetection>): Bitmap {
+        val bmp = base.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(bmp)
+
+        // linha fina do retangulo
+        val caneta = Paint()
+        caneta.color = Color.GREEN
+        caneta.style = Paint.Style.STROKE
+        caneta.strokeWidth = 3f
+        caneta.isAntiAlias = true
+
+        // texto do nome
+        val texto = Paint()
+        texto.color = Color.GREEN
+        texto.textSize = 34f
+        texto.style = Paint.Style.FILL
+        texto.isAntiAlias = true
+
+        // fundo escuro atras do texto, pra ficar legivel sobre qualquer cor
+        val fundo = Paint()
+        fundo.color = Color.argb(150, 0, 0, 0)
+        fundo.style = Paint.Style.FILL
+
+        for (obj in lista) {
+            val caixa = obj.caixaDelimitadora
+            canvas.drawRect(caixa, caneta)
+
+            val nome = traduzir(obj.nomeObjeto)
+            val larguraTexto = texto.measureText(nome)
+
+            // posicao do texto: acima da caixa; se nao couber, joga pra dentro
+            var textoX = caixa.left
+            var textoY = caixa.top - 10f
+            if (textoY < 34f) textoY = caixa.top + 38f
+
+            // nao deixa o texto sair pelas laterais da tela
+            if (textoX < 4f) textoX = 4f
+            if (textoX + larguraTexto > bmp.width) textoX = bmp.width - larguraTexto - 4f
+
+            // desenha o fundo e depois o nome
+            canvas.drawRect(textoX - 4f, textoY - 32f, textoX + larguraTexto + 8f, textoY + 8f, fundo)
+            canvas.drawText(nome, textoX, textoY, texto)
+        }
+        return bmp
+    }
+
+    // fala os nomes dos objetos apenas quando a lista muda (evita repetir)
+    private fun anunciar(lista: List<ObjectDetection>) {
+        val nomes = lista.map { traduzir(it.nomeObjeto) }.toSet()
+        if (nomes.isNotEmpty() && nomes != ultimosNomes) {
+            ultimosNomes = nomes
+            if (vozLigada) locutor.falar(nomes.joinToString(", "))
+        }
+    }
+
+    // traduz os nomes das classes do COCO (ingles) para portugues
+    private fun traduzir(nome: String): String {
+        return when (nome.lowercase().trim()) {
+            "person" -> "pessoa"
+            "bicycle" -> "bicicleta"
+            "car" -> "carro"
+            "motorcycle" -> "moto"
+            "airplane" -> "aviao"
+            "bus" -> "onibus"
+            "train" -> "trem"
+            "truck" -> "caminhao"
+            "boat" -> "barco"
+            "traffic light" -> "semaforo"
+            "fire hydrant" -> "hidrante"
+            "stop sign" -> "placa de pare"
+            "parking meter" -> "parquimetro"
+            "bench" -> "banco"
+            "bird" -> "passaro"
+            "cat" -> "gato"
+            "dog" -> "cachorro"
+            "horse" -> "cavalo"
+            "sheep" -> "ovelha"
+            "cow" -> "vaca"
+            "elephant" -> "elefante"
+            "bear" -> "urso"
+            "zebra" -> "zebra"
+            "giraffe" -> "girafa"
+            "backpack" -> "mochila"
+            "umbrella" -> "guarda-chuva"
+            "handbag" -> "bolsa"
+            "tie" -> "gravata"
+            "suitcase" -> "mala"
+            "frisbee" -> "frisbee"
+            "skis" -> "esqui"
+            "snowboard" -> "snowboard"
+            "sports ball" -> "bola"
+            "kite" -> "pipa"
+            "baseball bat" -> "taco de beisebol"
+            "baseball glove" -> "luva de beisebol"
+            "skateboard" -> "skate"
+            "surfboard" -> "prancha de surf"
+            "tennis racket" -> "raquete"
+            "bottle" -> "garrafa"
+            "wine glass" -> "taca"
+            "cup" -> "copo"
+            "fork" -> "garfo"
+            "knife" -> "faca"
+            "spoon" -> "colher"
+            "bowl" -> "tigela"
+            "banana" -> "banana"
+            "apple" -> "maca"
+            "sandwich" -> "sanduiche"
+            "orange" -> "laranja"
+            "broccoli" -> "brocolis"
+            "carrot" -> "cenoura"
+            "hot dog" -> "cachorro-quente"
+            "pizza" -> "pizza"
+            "donut" -> "rosquinha"
+            "cake" -> "bolo"
+            "chair" -> "cadeira"
+            "couch" -> "sofa"
+            "potted plant" -> "planta"
+            "bed" -> "cama"
+            "dining table" -> "mesa"
+            "toilet" -> "vaso sanitario"
+            "tv" -> "televisao"
+            "laptop" -> "notebook"
+            "mouse" -> "mouse"
+            "remote" -> "controle"
+            "keyboard" -> "teclado"
+            "cell phone" -> "celular"
+            "microwave" -> "microondas"
+            "oven" -> "forno"
+            "toaster" -> "torradeira"
+            "sink" -> "pia"
+            "refrigerator" -> "geladeira"
+            "book" -> "livro"
+            "clock" -> "relogio"
+            "vase" -> "vaso"
+            "scissors" -> "tesoura"
+            "teddy bear" -> "urso de pelucia"
+            "hair drier" -> "secador"
+            "toothbrush" -> "escova de dente"
+            else -> nome
+        }
     }
 
     private fun rotacionarBitmap(bitmap: Bitmap, graus: Int): Bitmap {
@@ -282,5 +478,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         executorCamera.shutdown()
+        locutor.encerrar()
     }
 }

@@ -47,6 +47,10 @@ android {
             jniLibs.srcDirs("src/main/jniLibs")
         }
     }
+
+    androidResources {
+        noCompress += "tflite"
+    }
 }
 
 dependencies {
