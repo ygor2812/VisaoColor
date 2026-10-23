@@ -55,6 +55,22 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Modulo 5: alerta de iluminacao inadequada -->
+    <TextView
+        android:id="@+id/textoAlerta"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:padding="8dp"
+        android:background="#CCAA0000"
+        android:text=""
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/painelControles"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
     <LinearLayout
         android:id="@+id/painelControles"
         android:layout_width="match_parent"

@@ -1,6 +1,7 @@
 package com.visaocolor.ui
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -11,6 +12,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.Log
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.widget.Button
 import android.widget.ImageView
@@ -19,6 +21,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.CameraControl
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -27,12 +30,14 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.visaocolor.R
 import com.visaocolor.controllers.ColorIdentificationController
+import com.visaocolor.controllers.StartupController
 import com.visaocolor.models.ColorBlindnessType
 import com.visaocolor.models.ObjectDetection
 import com.visaocolor.repositories.LocalStorageRepository
 import com.visaocolor.repositories.SessionColorRepository
 import com.visaocolor.services.BrettelFilterProcessor
 import com.visaocolor.services.ColorAnalyzer
+import com.visaocolor.services.LightingMonitor
 import com.visaocolor.services.ObjectDetectionEngine
 import com.visaocolor.services.SpeechSynthesizer
 import kotlinx.coroutines.launch
@@ -55,9 +60,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var motorIA: ObjectDetectionEngine
     private lateinit var locutor: SpeechSynthesizer
 
+    // iluminacao e inicializacao (Modulo 5)
+    private val monitorLuz = LightingMonitor()
+    private lateinit var inicializacao: StartupController
+
     private lateinit var imagemCamera: ImageView
     private lateinit var textoStatus: TextView
     private lateinit var textoCor: TextView
+    private lateinit var textoAlerta: TextView
     private lateinit var marcador: View
     private lateinit var painelAjustes: View
 
@@ -70,12 +80,21 @@ class MainActivity : AppCompatActivity() {
     private var contraste = 100
     private var intensidade = 100
 
-    // estado da IA e voz
+    // IA/voz
     private var iaLigada = false
     private var vozLigada = false
     @Volatile private var deteccoes: List<ObjectDetection> = emptyList()
     private var ultimaDeteccaoMs = 0L
     private var ultimosNomes: Set<String> = emptySet()
+
+    // iluminacao
+    private var ultimaLuzMs = 0L
+
+    // zoom por pinca (Modulo 5)
+    private lateinit var detectorEscala: ScaleGestureDetector
+    private var cameraControle: CameraControl? = null
+    private var zoomAtual = 1f
+    private var houveZoom = false
 
     private val permissaoCamera = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -91,31 +110,30 @@ class MainActivity : AppCompatActivity() {
         imagemCamera = findViewById(R.id.imagemCamera)
         textoStatus = findViewById(R.id.textoStatus)
         textoCor = findViewById(R.id.textoCor)
+        textoAlerta = findViewById(R.id.textoAlerta)
         marcador = findViewById(R.id.marcador)
         painelAjustes = findViewById(R.id.painelAjustes)
 
         armazenamento = LocalStorageRepository(applicationContext)
+        inicializacao = StartupController(armazenamento)
         executorCamera = Executors.newSingleThreadExecutor()
 
-        // prepara IA e voz
         motorIA = ObjectDetectionEngine(applicationContext)
         locutor = SpeechSynthesizer(applicationContext)
         locutor.iniciar()
-        // carrega o modelo em segundo plano para nao travar a tela
         Thread {
-            try {
-                motorIA.carregar()
-                Log.d("VisaoColor", "Modelo de IA carregado")
-            } catch (e: Exception) {
+            try { motorIA.carregar() } catch (e: Exception) {
                 Log.e("VisaoColor", "Falha ao carregar modelo de IA", e)
             }
         }.start()
 
         prepararMarcador()
+        prepararZoom()
         configurarToque()
         carregarConfiguracoes()
         configurarControles()
         configurarSliders()
+        verificarInicializacao()
         solicitarPermissaoCamera()
     }
 
@@ -127,11 +145,31 @@ class MainActivity : AppCompatActivity() {
         marcador.background = anel
     }
 
+    // detector do gesto de pinca (zoom)
+    private fun prepararZoom() {
+        detectorEscala = ScaleGestureDetector(this,
+            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScale(detector: ScaleGestureDetector): Boolean {
+                    houveZoom = true
+                    zoomAtual = (zoomAtual * detector.scaleFactor).coerceIn(1f, 5f)
+                    cameraControle?.setZoomRatio(zoomAtual)
+                    return true
+                }
+            })
+    }
+
     private fun configurarToque() {
         imagemCamera.setOnTouchListener { v, event ->
-            if (event.action == MotionEvent.ACTION_DOWN) {
-                identificarPelaTela(event.x, event.y)
-                v.performClick()
+            detectorEscala.onTouchEvent(event)
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> houveZoom = false
+                MotionEvent.ACTION_UP -> {
+                    // so identifica a cor se foi um toque simples (sem zoom)
+                    if (!houveZoom && event.pointerCount == 1) {
+                        identificarPelaTela(event.x, event.y)
+                        v.performClick()
+                    }
+                }
             }
             true
         }
@@ -161,6 +199,51 @@ class MainActivity : AppCompatActivity() {
         marcador.visibility = View.VISIBLE
     }
 
+    // Modulo 5: mostra termos no primeiro uso, depois o tutorial
+    private fun verificarInicializacao() = lifecycleScope.launch {
+        if (!inicializacao.aceitouTermos()) {
+            mostrarTermos()
+        } else if (inicializacao.ehPrimeiroAcesso()) {
+            mostrarTutorial()
+        }
+    }
+
+    private fun mostrarTermos() {
+        AlertDialog.Builder(this)
+            .setTitle("Termos de uso")
+            .setMessage(
+                "O VisaoColor e uma ferramenta de auxilio e nao substitui avaliacao medica. " +
+                        "As cores e objetos identificados sao aproximacoes e podem variar conforme a " +
+                        "iluminacao e a camera. Nao use o aplicativo como unica referencia em situacoes " +
+                        "criticas, como transito, medicacao ou seguranca.\n\nAo continuar, voce concorda com estes termos."
+            )
+            .setCancelable(false)
+            .setPositiveButton("Aceitar e continuar") { _, _ ->
+                lifecycleScope.launch {
+                    inicializacao.aceitarTermos()
+                    if (inicializacao.ehPrimeiroAcesso()) mostrarTutorial()
+                }
+            }
+            .setNegativeButton("Recusar") { _, _ -> finish() }
+            .show()
+    }
+
+    private fun mostrarTutorial() {
+        AlertDialog.Builder(this)
+            .setTitle("Bem-vindo ao VisaoColor")
+            .setMessage(
+                "- Escolha o perfil (Protan, Deuter, Tritan) para corrigir as cores.\n" +
+                        "- Toque na tela para identificar a cor de um ponto.\n" +
+                        "- Use dois dedos para dar zoom.\n" +
+                        "- Ligue a IA para reconhecer objetos e a Voz para ouvir os nomes.\n" +
+                        "- Em Ajustes voce muda brilho, contraste e intensidade."
+            )
+            .setPositiveButton("Entendi") { _, _ ->
+                lifecycleScope.launch { inicializacao.concluirTutorial() }
+            }
+            .show()
+    }
+
     private fun carregarConfiguracoes() = lifecycleScope.launch {
         val config = armazenamento.obterConfiguracoesImagem()
         brilho = config.brilho
@@ -175,16 +258,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun configurarControles() {
         findViewById<Button>(R.id.botaoProtanopia).setOnClickListener {
-            tipoAtual = ColorBlindnessType.PROTANOPIA
-            atualizarStatus()
+            tipoAtual = ColorBlindnessType.PROTANOPIA; atualizarStatus()
         }
         findViewById<Button>(R.id.botaoDeuteranopia).setOnClickListener {
-            tipoAtual = ColorBlindnessType.DEUTERANOPIA
-            atualizarStatus()
+            tipoAtual = ColorBlindnessType.DEUTERANOPIA; atualizarStatus()
         }
         findViewById<Button>(R.id.botaoTritanopia).setOnClickListener {
-            tipoAtual = ColorBlindnessType.TRITANOPIA
-            atualizarStatus()
+            tipoAtual = ColorBlindnessType.TRITANOPIA; atualizarStatus()
         }
 
         val botaoLigaDesliga = findViewById<Button>(R.id.botaoLigaDesliga)
@@ -204,11 +284,9 @@ class MainActivity : AppCompatActivity() {
             findViewById<SeekBar>(R.id.sliderBrilho).progress = 100
             findViewById<SeekBar>(R.id.sliderContraste).progress = 100
             findViewById<SeekBar>(R.id.sliderIntensidade).progress = 100
-            atualizarLabels()
-            salvarConfiguracoes()
+            atualizarLabels(); salvarConfiguracoes()
         }
 
-        // botao liga/desliga a IA (reconhecimento de objetos)
         val botaoIA = findViewById<Button>(R.id.botaoIA)
         botaoIA.setOnClickListener {
             iaLigada = !iaLigada
@@ -216,7 +294,6 @@ class MainActivity : AppCompatActivity() {
             if (!iaLigada) deteccoes = emptyList()
         }
 
-        // botao liga/desliga a voz
         val botaoVoz = findViewById<Button>(R.id.botaoVoz)
         botaoVoz.setOnClickListener {
             vozLigada = !vozLigada
@@ -287,7 +364,10 @@ class MainActivity : AppCompatActivity() {
             analise.setAnalyzer(executorCamera) { imagem -> processarFrame(imagem) }
             try {
                 provedor.unbindAll()
-                provedor.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, analise)
+                val camera = provedor.bindToLifecycle(
+                    this, CameraSelector.DEFAULT_BACK_CAMERA, analise
+                )
+                cameraControle = camera.cameraControl   // guarda pra controlar o zoom
             } catch (e: Exception) {
                 Log.e("VisaoColor", "Erro ao iniciar a camera", e)
             }
@@ -299,24 +379,28 @@ class MainActivity : AppCompatActivity() {
         val original = rotacionarBitmap(imagem.toBitmap(), rotacao)
         ultimoOriginal = original
 
-        // roda a IA no maximo a cada 600ms (a inferencia e pesada)
-        if (iaLigada) {
-            val agora = System.currentTimeMillis()
-            if (agora - ultimaDeteccaoMs > 600) {
-                ultimaDeteccaoMs = agora
-                try {
-                    deteccoes = motorIA.detectar(original)
-                    anunciar(deteccoes)
-                } catch (e: Exception) {
-                    Log.e("VisaoColor", "Erro na deteccao", e)
-                }
+        val agora = System.currentTimeMillis()
+
+        // alerta de iluminacao (a cada 700ms)
+        if (agora - ultimaLuzMs > 700) {
+            ultimaLuzMs = agora
+            verificarIluminacao(original)
+        }
+
+        // IA (a cada 600ms)
+        if (iaLigada && agora - ultimaDeteccaoMs > 600) {
+            ultimaDeteccaoMs = agora
+            try {
+                deteccoes = motorIA.detectar(original)
+                anunciar(deteccoes)
+            } catch (e: Exception) {
+                Log.e("VisaoColor", "Erro na deteccao", e)
             }
         }
 
         val tipoUsar = if (filtroLigado) tipoAtual else ColorBlindnessType.NONE
         var bitmapFinal = processadorFiltro.aplicar(original, tipoUsar, brilho, contraste, intensidade)
 
-        // desenha as caixas dos objetos por cima da imagem
         if (iaLigada && deteccoes.isNotEmpty()) {
             bitmapFinal = desenharCaixas(bitmapFinal, deteccoes)
         }
@@ -325,26 +409,49 @@ class MainActivity : AppCompatActivity() {
         imagem.close()
     }
 
-    // desenha um retangulo fino e o nome de cada objeto detectado
+    // mede a luminosidade media e avisa se estiver escuro ou claro demais
+    private fun verificarIluminacao(bmp: Bitmap) {
+        val pequeno = Bitmap.createScaledBitmap(bmp, 12, 12, true)
+        val pixels = mutableListOf<IntArray>()
+        for (y in 0 until pequeno.height) {
+            for (x in 0 until pequeno.width) {
+                val p = pequeno.getPixel(x, y)
+                pixels.add(intArrayOf(Color.red(p), Color.green(p), Color.blue(p)))
+            }
+        }
+        val luz = monitorLuz.luminanciaMedia(pixels)
+        val status = monitorLuz.verificarStatus(luz)
+        runOnUiThread {
+            when (status) {
+                LightingMonitor.Status.ESCURO -> {
+                    textoAlerta.text = "Ambiente escuro - as cores podem estar imprecisas"
+                    textoAlerta.visibility = View.VISIBLE
+                }
+                LightingMonitor.Status.CLARO -> {
+                    textoAlerta.text = "Muita luz - as cores podem estar imprecisas"
+                    textoAlerta.visibility = View.VISIBLE
+                }
+                else -> textoAlerta.visibility = View.GONE
+            }
+        }
+    }
+
     private fun desenharCaixas(base: Bitmap, lista: List<ObjectDetection>): Bitmap {
         val bmp = base.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(bmp)
 
-        // linha fina do retangulo
         val caneta = Paint()
         caneta.color = Color.GREEN
         caneta.style = Paint.Style.STROKE
         caneta.strokeWidth = 3f
         caneta.isAntiAlias = true
 
-        // texto do nome
         val texto = Paint()
         texto.color = Color.GREEN
         texto.textSize = 34f
         texto.style = Paint.Style.FILL
         texto.isAntiAlias = true
 
-        // fundo escuro atras do texto, pra ficar legivel sobre qualquer cor
         val fundo = Paint()
         fundo.color = Color.argb(150, 0, 0, 0)
         fundo.style = Paint.Style.FILL
@@ -356,23 +463,18 @@ class MainActivity : AppCompatActivity() {
             val nome = traduzir(obj.nomeObjeto)
             val larguraTexto = texto.measureText(nome)
 
-            // posicao do texto: acima da caixa; se nao couber, joga pra dentro
             var textoX = caixa.left
             var textoY = caixa.top - 10f
             if (textoY < 34f) textoY = caixa.top + 38f
-
-            // nao deixa o texto sair pelas laterais da tela
             if (textoX < 4f) textoX = 4f
             if (textoX + larguraTexto > bmp.width) textoX = bmp.width - larguraTexto - 4f
 
-            // desenha o fundo e depois o nome
             canvas.drawRect(textoX - 4f, textoY - 32f, textoX + larguraTexto + 8f, textoY + 8f, fundo)
             canvas.drawText(nome, textoX, textoY, texto)
         }
         return bmp
     }
 
-    // fala os nomes dos objetos apenas quando a lista muda (evita repetir)
     private fun anunciar(lista: List<ObjectDetection>) {
         val nomes = lista.map { traduzir(it.nomeObjeto) }.toSet()
         if (nomes.isNotEmpty() && nomes != ultimosNomes) {
@@ -381,89 +483,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // traduz os nomes das classes do COCO (ingles) para portugues
     private fun traduzir(nome: String): String {
         return when (nome.lowercase().trim()) {
-            "person" -> "pessoa"
-            "bicycle" -> "bicicleta"
-            "car" -> "carro"
-            "motorcycle" -> "moto"
-            "airplane" -> "aviao"
-            "bus" -> "onibus"
-            "train" -> "trem"
-            "truck" -> "caminhao"
-            "boat" -> "barco"
-            "traffic light" -> "semaforo"
-            "fire hydrant" -> "hidrante"
-            "stop sign" -> "placa de pare"
-            "parking meter" -> "parquimetro"
-            "bench" -> "banco"
-            "bird" -> "passaro"
-            "cat" -> "gato"
-            "dog" -> "cachorro"
-            "horse" -> "cavalo"
-            "sheep" -> "ovelha"
-            "cow" -> "vaca"
-            "elephant" -> "elefante"
-            "bear" -> "urso"
-            "zebra" -> "zebra"
-            "giraffe" -> "girafa"
-            "backpack" -> "mochila"
-            "umbrella" -> "guarda-chuva"
-            "handbag" -> "bolsa"
-            "tie" -> "gravata"
-            "suitcase" -> "mala"
-            "frisbee" -> "frisbee"
-            "skis" -> "esqui"
-            "snowboard" -> "snowboard"
-            "sports ball" -> "bola"
-            "kite" -> "pipa"
-            "baseball bat" -> "taco de beisebol"
-            "baseball glove" -> "luva de beisebol"
-            "skateboard" -> "skate"
-            "surfboard" -> "prancha de surf"
-            "tennis racket" -> "raquete"
-            "bottle" -> "garrafa"
-            "wine glass" -> "taca"
-            "cup" -> "copo"
-            "fork" -> "garfo"
-            "knife" -> "faca"
-            "spoon" -> "colher"
-            "bowl" -> "tigela"
-            "banana" -> "banana"
-            "apple" -> "maca"
-            "sandwich" -> "sanduiche"
-            "orange" -> "laranja"
-            "broccoli" -> "brocolis"
-            "carrot" -> "cenoura"
-            "hot dog" -> "cachorro-quente"
-            "pizza" -> "pizza"
-            "donut" -> "rosquinha"
-            "cake" -> "bolo"
-            "chair" -> "cadeira"
-            "couch" -> "sofa"
-            "potted plant" -> "planta"
-            "bed" -> "cama"
-            "dining table" -> "mesa"
-            "toilet" -> "vaso sanitario"
-            "tv" -> "televisao"
-            "laptop" -> "notebook"
-            "mouse" -> "mouse"
-            "remote" -> "controle"
-            "keyboard" -> "teclado"
-            "cell phone" -> "celular"
-            "microwave" -> "microondas"
-            "oven" -> "forno"
-            "toaster" -> "torradeira"
-            "sink" -> "pia"
-            "refrigerator" -> "geladeira"
-            "book" -> "livro"
-            "clock" -> "relogio"
-            "vase" -> "vaso"
-            "scissors" -> "tesoura"
-            "teddy bear" -> "urso de pelucia"
-            "hair drier" -> "secador"
-            "toothbrush" -> "escova de dente"
+            "person" -> "pessoa"; "bicycle" -> "bicicleta"; "car" -> "carro"
+            "motorcycle" -> "moto"; "airplane" -> "aviao"; "bus" -> "onibus"
+            "train" -> "trem"; "truck" -> "caminhao"; "boat" -> "barco"
+            "traffic light" -> "semaforo"; "fire hydrant" -> "hidrante"
+            "stop sign" -> "placa de pare"; "parking meter" -> "parquimetro"
+            "bench" -> "banco"; "bird" -> "passaro"; "cat" -> "gato"
+            "dog" -> "cachorro"; "horse" -> "cavalo"; "sheep" -> "ovelha"
+            "cow" -> "vaca"; "elephant" -> "elefante"; "bear" -> "urso"
+            "zebra" -> "zebra"; "giraffe" -> "girafa"; "backpack" -> "mochila"
+            "umbrella" -> "guarda-chuva"; "handbag" -> "bolsa"; "tie" -> "gravata"
+            "suitcase" -> "mala"; "frisbee" -> "frisbee"; "skis" -> "esqui"
+            "snowboard" -> "snowboard"; "sports ball" -> "bola"; "kite" -> "pipa"
+            "baseball bat" -> "taco de beisebol"; "baseball glove" -> "luva de beisebol"
+            "skateboard" -> "skate"; "surfboard" -> "prancha de surf"
+            "tennis racket" -> "raquete"; "bottle" -> "garrafa"; "wine glass" -> "taca"
+            "cup" -> "copo"; "fork" -> "garfo"; "knife" -> "faca"; "spoon" -> "colher"
+            "bowl" -> "tigela"; "banana" -> "banana"; "apple" -> "maca"
+            "sandwich" -> "sanduiche"; "orange" -> "laranja"; "broccoli" -> "brocolis"
+            "carrot" -> "cenoura"; "hot dog" -> "cachorro-quente"; "pizza" -> "pizza"
+            "donut" -> "rosquinha"; "cake" -> "bolo"; "chair" -> "cadeira"
+            "couch" -> "sofa"; "potted plant" -> "planta"; "bed" -> "cama"
+            "dining table" -> "mesa"; "toilet" -> "vaso sanitario"; "tv" -> "televisao"
+            "laptop" -> "notebook"; "mouse" -> "mouse"; "remote" -> "controle"
+            "keyboard" -> "teclado"; "cell phone" -> "celular"; "microwave" -> "microondas"
+            "oven" -> "forno"; "toaster" -> "torradeira"; "sink" -> "pia"
+            "refrigerator" -> "geladeira"; "book" -> "livro"; "clock" -> "relogio"
+            "vase" -> "vaso"; "scissors" -> "tesoura"; "teddy bear" -> "urso de pelucia"
+            "hair drier" -> "secador"; "toothbrush" -> "escova de dente"
             else -> nome
         }
     }
