@@ -10,6 +10,8 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -95,6 +97,13 @@ class MainActivity : AppCompatActivity() {
     private var cameraControle: CameraControl? = null
     private var zoomAtual = 1f
     private var houveZoom = false
+
+    // esconde o nome da cor e o marcador depois de alguns segundos
+    private val manipulador = Handler(Looper.getMainLooper())
+    private val esconderCor = Runnable {
+        textoCor.visibility = View.GONE
+        marcador.visibility = View.GONE
+    }
 
     private val permissaoCamera = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -191,12 +200,17 @@ class MainActivity : AppCompatActivity() {
         val pixel = bmp.getPixel(bx, by)
         val registro = controladorCor.identificar(Color.red(pixel), Color.green(pixel), Color.blue(pixel))
 
-        textoCor.text = "${registro.nome}   ${registro.paraHex()}"
+        // mostra so o nome da cor, sem o codigo hexadecimal
+        textoCor.text = registro.nome
         textoCor.visibility = View.VISIBLE
 
         marcador.translationX = tocX - marcador.width / 2f
         marcador.translationY = tocY - marcador.height / 2f
         marcador.visibility = View.VISIBLE
+
+        // reinicia a contagem e esconde depois de 3 segundos
+        manipulador.removeCallbacks(esconderCor)
+        manipulador.postDelayed(esconderCor, 3000)
     }
 
     // Modulo 5: mostra termos no primeiro uso, depois o tutorial
@@ -526,6 +540,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        manipulador.removeCallbacks(esconderCor)
         executorCamera.shutdown()
         locutor.encerrar()
     }
