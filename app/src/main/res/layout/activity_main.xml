@@ -55,7 +55,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- Modulo 5: alerta de iluminacao inadequada -->
     <TextView
         android:id="@+id/textoAlerta"
         android:layout_width="wrap_content"
@@ -82,67 +81,125 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <LinearLayout
+        <ScrollView
             android:id="@+id/painelAjustes"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
+            android:layout_height="260dp"
             android:visibility="gone"
             android:paddingBottom="8dp">
 
-            <TextView
-                android:id="@+id/labelBrilho"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Brilho: 0"
-                android:textColor="#FFFFFF"
-                android:textSize="13sp" />
-
-            <SeekBar
-                android:id="@+id/sliderBrilho"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:max="200"
-                android:progress="100" />
+                android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/labelContraste"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Contraste: 100"
-                android:textColor="#FFFFFF"
-                android:textSize="13sp" />
+                <TextView
+                    android:id="@+id/labelBrilho"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Brilho: 0"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
 
-            <SeekBar
-                android:id="@+id/sliderContraste"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:max="200"
-                android:progress="100" />
+                <SeekBar
+                    android:id="@+id/sliderBrilho"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:max="200"
+                    android:progress="100" />
 
-            <TextView
-                android:id="@+id/labelIntensidade"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Intensidade: 100"
-                android:textColor="#FFFFFF"
-                android:textSize="13sp" />
+                <TextView
+                    android:id="@+id/labelContraste"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Contraste: 100"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
 
-            <SeekBar
-                android:id="@+id/sliderIntensidade"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:max="100"
-                android:progress="100" />
+                <SeekBar
+                    android:id="@+id/sliderContraste"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:max="200"
+                    android:progress="100" />
 
-            <Button
-                android:id="@+id/botaoRestaurar"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Restaurar padrao"
-                android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/labelIntensidade"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Intensidade: 100"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
 
-        </LinearLayout>
+                <SeekBar
+                    android:id="@+id/sliderIntensidade"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:max="100"
+                    android:progress="100" />
+
+                <TextView
+                    android:id="@+id/labelZoom"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Zoom: 1.0x"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
+
+                <SeekBar
+                    android:id="@+id/sliderZoom"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:max="100"
+                    android:progress="0" />
+
+                <TextView
+                    android:id="@+id/labelVelocidadeVoz"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Velocidade da voz: 1.0x"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
+
+                <SeekBar
+                    android:id="@+id/sliderVelocidadeVoz"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:max="100"
+                    android:progress="33" />
+
+                <TextView
+                    android:id="@+id/labelVolumeVoz"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Volume da voz: 100%"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
+
+                <SeekBar
+                    android:id="@+id/sliderVolumeVoz"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:max="100"
+                    android:progress="100" />
+
+                <Button
+                    android:id="@+id/botaoSensibilidade"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Sensibilidade dos alertas: Media"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/botaoRestaurar"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Restaurar padrao"
+                    android:textSize="12sp" />
+
+            </LinearLayout>
+
+        </ScrollView>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -224,6 +281,31 @@
                 android:layout_weight="1"
                 android:layout_margin="4dp"
                 android:text="Voz: OFF"
+                android:textSize="12sp" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/botaoHistorico"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_margin="4dp"
+                android:text="Historico"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/botaoAjuda"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_margin="4dp"
+                android:text="Ajuda"
                 android:textSize="12sp" />
 
         </LinearLayout>

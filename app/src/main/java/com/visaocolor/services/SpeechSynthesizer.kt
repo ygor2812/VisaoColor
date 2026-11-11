@@ -1,42 +1,55 @@
 package com.visaocolor.services
 
 import android.content.Context
+import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import java.util.Locale
 
-// Le em voz alta os nomes dos objetos e cores, usando o TTS nativo do Android.
+// Converte texto em fala usando o mecanismo nativo do Android
 class SpeechSynthesizer(private val contexto: Context) {
 
-    private var tts: TextToSpeech? = null
+    private var motor: TextToSpeech? = null
     private var pronto = false
     private var ativo = false
+    private var velocidade = 1.0f
+    private var volume = 1.0f
 
-    // inicia o mecanismo de voz em portugues do Brasil
     fun iniciar() {
-        tts = TextToSpeech(contexto) { status ->
-            pronto = status == TextToSpeech.SUCCESS
-            if (pronto) {
-                tts?.language = Locale("pt", "BR")
+        motor = TextToSpeech(contexto) { estado ->
+            if (estado == TextToSpeech.SUCCESS) {
+                motor?.language = Locale("pt", "BR")
+                motor?.setSpeechRate(velocidade)
+                pronto = true
             }
         }
     }
 
-    // fala um texto (so se estiver pronto e ativado)
-    fun falar(texto: String) {
-        if (!pronto || !ativo) return
-        tts?.speak(texto, TextToSpeech.QUEUE_FLUSH, null, "visaocolor")
-    }
-
     fun definirAtivo(valor: Boolean) {
         ativo = valor
-        if (!valor) tts?.stop()
+        if (!valor) motor?.stop()
     }
 
-    // libera o recurso quando o app fecha
+    // Velocidade entre 0.5x (lento) e 2.0x (rapido)
+    fun definirVelocidade(valor: Float) {
+        velocidade = valor.coerceIn(0.5f, 2.0f)
+        motor?.setSpeechRate(velocidade)
+    }
+
+    // Volume entre 0.0 e 1.0
+    fun definirVolume(valor: Float) {
+        volume = valor.coerceIn(0f, 1f)
+    }
+
+    fun falar(texto: String) {
+        if (!ativo || !pronto) return
+        val parametros = Bundle()
+        parametros.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, volume)
+        motor?.speak(texto, TextToSpeech.QUEUE_FLUSH, parametros, "visaocolor")
+    }
+
     fun encerrar() {
-        tts?.stop()
-        tts?.shutdown()
-        tts = null
-        pronto = false
+        motor?.stop()
+        motor?.shutdown()
+        motor = null
     }
 }

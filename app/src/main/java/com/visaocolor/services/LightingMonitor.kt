@@ -1,39 +1,34 @@
 package com.visaocolor.services
 
-// detecta se o ambiente esta escuro demais ou claro demais
-// pra avisar o usuario que a leitura pode estar incorreta
+// Mede a luminosidade media da cena e classifica a condicao de iluminacao
 class LightingMonitor {
 
-    var luminanciaMinima = 30
-    var luminanciaMaxima = 220
+    enum class Status { ESCURO, ADEQUADO, CLARO }
 
-    enum class Status { ESCURO, OK, CLARO }
+    // Tres niveis de sensibilidade: quanto maior, mais cedo o alerta aparece
+    enum class Sensibilidade(val rotulo: String, val minima: Double, val maxima: Double) {
+        BAIXA("Baixa", 18.0, 240.0),
+        MEDIA("Media", 30.0, 220.0),
+        ALTA("Alta", 45.0, 200.0)
+    }
 
-    // calcula luminancia media de uma lista de pixels
-    // formula padrao: Y = 0.299R + 0.587G + 0.114B
-    fun luminanciaMedia(pixels: List<IntArray>): Int {
-        if (pixels.isEmpty()) return 0
+    var sensibilidade: Sensibilidade = Sensibilidade.MEDIA
 
+    // Luminancia conforme a recomendacao ITU-R BT.601
+    fun luminanciaMedia(pixels: List<IntArray>): Double {
+        if (pixels.isEmpty()) return 0.0
         var soma = 0.0
         for (p in pixels) {
             soma += 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2]
         }
-        return (soma / pixels.size).toInt()
+        return soma / pixels.size
     }
 
-    fun verificarStatus(luminancia: Int): Status {
+    fun verificarStatus(luminancia: Double): Status {
         return when {
-            luminancia < luminanciaMinima -> Status.ESCURO
-            luminancia > luminanciaMaxima -> Status.CLARO
-            else -> Status.OK
+            luminancia < sensibilidade.minima -> Status.ESCURO
+            luminancia > sensibilidade.maxima -> Status.CLARO
+            else -> Status.ADEQUADO
         }
-    }
-
-    fun atualizarLimites(minimo: Int, maximo: Int) {
-        if (minimo >= maximo) {
-            throw IllegalArgumentException("minimo tem que ser menor que maximo")
-        }
-        luminanciaMinima = minimo
-        luminanciaMaxima = maximo
     }
 }

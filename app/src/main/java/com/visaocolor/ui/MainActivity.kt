@@ -2,6 +2,7 @@ package com.visaocolor.ui
 
 import android.Manifest
 import android.app.AlertDialog
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -37,20 +38,31 @@ import com.visaocolor.models.ColorBlindnessType
 import com.visaocolor.models.ObjectDetection
 import com.visaocolor.repositories.LocalStorageRepository
 import com.visaocolor.repositories.SessionColorRepository
+import com.visaocolor.repositories.SettingsRepository
 import com.visaocolor.services.BrettelFilterProcessor
 import com.visaocolor.services.ColorAnalyzer
 import com.visaocolor.services.LightingMonitor
 import com.visaocolor.services.ObjectDetectionEngine
 import com.visaocolor.services.SpeechSynthesizer
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        const val TEXTO_TERMOS =
+            "O VisaoColor e uma ferramenta de auxilio e nao substitui avaliacao medica. " +
+                    "As cores e objetos identificados sao aproximacoes e podem variar conforme a " +
+                    "iluminacao e a camera. Nao use o aplicativo como unica referencia em situacoes " +
+                    "criticas, como transito, medicacao ou seguranca."
+    }
+
     private lateinit var executorCamera: ExecutorService
     private val processadorFiltro = BrettelFilterProcessor()
     private lateinit var armazenamento: LocalStorageRepository
+    private lateinit var preferencias: SettingsRepository
 
     // identificacao de cor por toque (Modulo 3)
     private val controladorCor = ColorIdentificationController(
@@ -72,6 +84,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var textoAlerta: TextView
     private lateinit var marcador: View
     private lateinit var painelAjustes: View
+    private lateinit var sliderZoom: SeekBar
+    private lateinit var botaoSensibilidade: Button
+
+    private val anelMarcador = GradientDrawable()
 
     @Volatile private var ultimoOriginal: Bitmap? = null
 
@@ -82,28 +98,50 @@ class MainActivity : AppCompatActivity() {
     private var contraste = 100
     private var intensidade = 100
 
-    // IA/voz
     private var iaLigada = false
     private var vozLigada = false
     @Volatile private var deteccoes: List<ObjectDetection> = emptyList()
     private var ultimaDeteccaoMs = 0L
     private var ultimosNomes: Set<String> = emptySet()
 
-    // iluminacao
     private var ultimaLuzMs = 0L
+    private var ultimoStatusLuz = LightingMonitor.Status.ADEQUADO
 
-    // zoom por pinca (Modulo 5)
     private lateinit var detectorEscala: ScaleGestureDetector
     private var cameraControle: CameraControl? = null
     private var zoomAtual = 1f
     private var houveZoom = false
 
-    // esconde o nome da cor e o marcador depois de alguns segundos
     private val manipulador = Handler(Looper.getMainLooper())
     private val esconderCor = Runnable {
         textoCor.visibility = View.GONE
         marcador.visibility = View.GONE
     }
+
+    // tutorial dividido em etapas (RF 37)
+    private val etapasTutorial = listOf(
+        Pair("Tutorial 1 de 4 - Correcao de cores",
+            "Escolha o perfil que corresponde ao seu tipo de daltonismo:\n\n" +
+                    "Protan - dificuldade com o vermelho\n" +
+                    "Deuter - dificuldade com o verde\n" +
+                    "Tritan - dificuldade com o azul\n\n" +
+                    "O botao Filtro liga e desliga a correcao, permitindo comparar com a imagem original."),
+        Pair("Tutorial 2 de 4 - Identificar cores",
+            "Toque com um dedo em qualquer ponto da tela.\n\n" +
+                    "O nome da cor aparece no alto e um marcador preenchido com a cor indica o ponto tocado. " +
+                    "O aviso desaparece sozinho apos tres segundos.\n\n" +
+                    "O botao Historico mostra todas as cores identificadas na sessao."),
+        Pair("Tutorial 3 de 4 - Objetos e voz",
+            "O botao IA liga o reconhecimento de objetos. Os objetos aparecem dentro de um " +
+                    "retangulo verde, com o nome e o grau de confianca.\n\n" +
+                    "O botao Voz faz o aplicativo falar os nomes das cores e dos objetos. " +
+                    "A velocidade e o volume podem ser ajustados em Ajustes."),
+        Pair("Tutorial 4 de 4 - Zoom e alertas",
+            "Use dois dedos sobre a imagem para ampliar ate cinco vezes, ou o controle de " +
+                    "zoom em Ajustes.\n\n" +
+                    "Quando a iluminacao estiver inadequada, um aviso vermelho aparece na parte " +
+                    "inferior da tela. A sensibilidade desse aviso pode ser alterada em Ajustes.")
+    )
 
     private val permissaoCamera = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -122,8 +160,11 @@ class MainActivity : AppCompatActivity() {
         textoAlerta = findViewById(R.id.textoAlerta)
         marcador = findViewById(R.id.marcador)
         painelAjustes = findViewById(R.id.painelAjustes)
+        sliderZoom = findViewById(R.id.sliderZoom)
+        botaoSensibilidade = findViewById(R.id.botaoSensibilidade)
 
         armazenamento = LocalStorageRepository(applicationContext)
+        preferencias = SettingsRepository(applicationContext)
         inicializacao = StartupController(armazenamento)
         executorCamera = Executors.newSingleThreadExecutor()
 
@@ -147,24 +188,32 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun prepararMarcador() {
-        val anel = GradientDrawable()
-        anel.shape = GradientDrawable.OVAL
-        anel.setColor(Color.TRANSPARENT)
-        anel.setStroke(8, Color.WHITE)
-        marcador.background = anel
+        anelMarcador.shape = GradientDrawable.OVAL
+        anelMarcador.setColor(Color.TRANSPARENT)
+        anelMarcador.setStroke(8, Color.WHITE)
+        marcador.background = anelMarcador
     }
 
-    // detector do gesto de pinca (zoom)
     private fun prepararZoom() {
         detectorEscala = ScaleGestureDetector(this,
             object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
                 override fun onScale(detector: ScaleGestureDetector): Boolean {
                     houveZoom = true
-                    zoomAtual = (zoomAtual * detector.scaleFactor).coerceIn(1f, 5f)
-                    cameraControle?.setZoomRatio(zoomAtual)
+                    aplicarZoom(zoomAtual * detector.scaleFactor, true)
                     return true
                 }
             })
+    }
+
+    // aplica o zoom e mantem o controle deslizante sincronizado (RF 32, 33, 34)
+    private fun aplicarZoom(valor: Float, atualizarSlider: Boolean) {
+        zoomAtual = valor.coerceIn(1f, 5f)
+        cameraControle?.setZoomRatio(zoomAtual)
+        findViewById<TextView>(R.id.labelZoom).text =
+            "Zoom: " + String.format("%.1f", zoomAtual) + "x"
+        if (atualizarSlider) {
+            sliderZoom.progress = (((zoomAtual - 1f) / 4f) * 100).toInt()
+        }
     }
 
     private fun configurarToque() {
@@ -173,7 +222,6 @@ class MainActivity : AppCompatActivity() {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> houveZoom = false
                 MotionEvent.ACTION_UP -> {
-                    // so identifica a cor se foi um toque simples (sem zoom)
                     if (!houveZoom && event.pointerCount == 1) {
                         identificarPelaTela(event.x, event.y)
                         v.performClick()
@@ -200,61 +248,116 @@ class MainActivity : AppCompatActivity() {
         val pixel = bmp.getPixel(bx, by)
         val registro = controladorCor.identificar(Color.red(pixel), Color.green(pixel), Color.blue(pixel))
 
-        // mostra so o nome da cor, sem o codigo hexadecimal
         textoCor.text = registro.nome
         textoCor.visibility = View.VISIBLE
 
+        // marcador preenchido com a cor identificada (RF 19)
+        anelMarcador.setColor(pixel)
         marcador.translationX = tocX - marcador.width / 2f
         marcador.translationY = tocY - marcador.height / 2f
         marcador.visibility = View.VISIBLE
 
-        // reinicia a contagem e esconde depois de 3 segundos
+        // le a cor em voz alta (RF 24)
+        if (vozLigada) locutor.falar(registro.nome)
+
         manipulador.removeCallbacks(esconderCor)
         manipulador.postDelayed(esconderCor, 3000)
     }
 
-    // Modulo 5: mostra termos no primeiro uso, depois o tutorial
     private fun verificarInicializacao() = lifecycleScope.launch {
         if (!inicializacao.aceitouTermos()) {
-            mostrarTermos()
+            mostrarTermos(true)
         } else if (inicializacao.ehPrimeiroAcesso()) {
-            mostrarTutorial()
+            mostrarTutorial(0)
         }
     }
 
-    private fun mostrarTermos() {
-        AlertDialog.Builder(this)
-            .setTitle("Termos de uso")
-            .setMessage(
-                "O VisaoColor e uma ferramenta de auxilio e nao substitui avaliacao medica. " +
-                        "As cores e objetos identificados sao aproximacoes e podem variar conforme a " +
-                        "iluminacao e a camera. Nao use o aplicativo como unica referencia em situacoes " +
-                        "criticas, como transito, medicacao ou seguranca.\n\nAo continuar, voce concorda com estes termos."
-            )
-            .setCancelable(false)
-            .setPositiveButton("Aceitar e continuar") { _, _ ->
+    // RF 38, 39: no primeiro acesso exige aceite; depois serve apenas para consulta
+    private fun mostrarTermos(primeiroAcesso: Boolean) {
+        val construtor = AlertDialog.Builder(this)
+            .setTitle("Termos de Uso e Seguranca")
+            .setMessage(TEXTO_TERMOS)
+
+        if (primeiroAcesso) {
+            construtor.setCancelable(false)
+            construtor.setPositiveButton("Aceitar e continuar") { _, _ ->
                 lifecycleScope.launch {
                     inicializacao.aceitarTermos()
-                    if (inicializacao.ehPrimeiroAcesso()) mostrarTutorial()
+                    if (inicializacao.ehPrimeiroAcesso()) mostrarTutorial(0)
                 }
             }
-            .setNegativeButton("Recusar") { _, _ -> finish() }
+            construtor.setNegativeButton("Recusar") { _, _ -> finish() }
+        } else {
+            construtor.setPositiveButton("Fechar", null)
+            construtor.setNeutralButton("Compartilhar") { _, _ -> compartilharTermos() }
+        }
+        construtor.show()
+    }
+
+    // RF 40: envia os termos por outro aplicativo do dispositivo
+    private fun compartilharTermos() {
+        val intencao = Intent(Intent.ACTION_SEND)
+        intencao.type = "text/plain"
+        intencao.putExtra(Intent.EXTRA_SUBJECT, "Termos de Uso - VisaoColor")
+        intencao.putExtra(Intent.EXTRA_TEXT, TEXTO_TERMOS)
+        startActivity(Intent.createChooser(intencao, "Compartilhar os termos"))
+    }
+
+    // RF 35, 36, 37: tutorial em etapas, com avanco e retorno
+    private fun mostrarTutorial(etapa: Int) {
+        val (titulo, texto) = etapasTutorial[etapa]
+        val construtor = AlertDialog.Builder(this)
+            .setTitle(titulo)
+            .setMessage(texto)
+            .setCancelable(false)
+
+        if (etapa < etapasTutorial.size - 1) {
+            construtor.setPositiveButton("Proximo") { _, _ -> mostrarTutorial(etapa + 1) }
+        } else {
+            construtor.setPositiveButton("Concluir") { _, _ ->
+                lifecycleScope.launch { inicializacao.concluirTutorial() }
+            }
+        }
+        if (etapa > 0) {
+            construtor.setNegativeButton("Voltar") { _, _ -> mostrarTutorial(etapa - 1) }
+        }
+        construtor.show()
+    }
+
+    private fun mostrarAjuda() {
+        val opcoes = arrayOf("Ver o tutorial", "Ler os termos de uso", "Compartilhar os termos")
+        AlertDialog.Builder(this)
+            .setTitle("Ajuda")
+            .setItems(opcoes) { _, indice ->
+                when (indice) {
+                    0 -> mostrarTutorial(0)
+                    1 -> mostrarTermos(false)
+                    2 -> compartilharTermos()
+                }
+            }
+            .setNegativeButton("Fechar", null)
             .show()
     }
 
-    private fun mostrarTutorial() {
+    // RF 20: historico de cores da sessao
+    private fun mostrarHistorico() {
+        val historico = controladorCor.obterHistorico()
+        if (historico.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle("Historico de cores")
+                .setMessage("Nenhuma cor foi identificada nesta sessao. Toque na tela para identificar uma cor.")
+                .setPositiveButton("Fechar", null)
+                .show()
+            return
+        }
+        val itens = historico.reversed()
+            .map { it.horarioFormatado() + "   " + it.nome + "   " + it.paraHex() }
+            .toTypedArray()
         AlertDialog.Builder(this)
-            .setTitle("Bem-vindo ao VisaoColor")
-            .setMessage(
-                "- Escolha o perfil (Protan, Deuter, Tritan) para corrigir as cores.\n" +
-                        "- Toque na tela para identificar a cor de um ponto.\n" +
-                        "- Use dois dedos para dar zoom.\n" +
-                        "- Ligue a IA para reconhecer objetos e a Voz para ouvir os nomes.\n" +
-                        "- Em Ajustes voce muda brilho, contraste e intensidade."
-            )
-            .setPositiveButton("Entendi") { _, _ ->
-                lifecycleScope.launch { inicializacao.concluirTutorial() }
-            }
+            .setTitle("Historico de cores (" + historico.size + ")")
+            .setItems(itens, null)
+            .setNegativeButton("Limpar") { _, _ -> controladorCor.limparHistorico() }
+            .setPositiveButton("Fechar", null)
             .show()
     }
 
@@ -267,18 +370,43 @@ class MainActivity : AppCompatActivity() {
         findViewById<SeekBar>(R.id.sliderBrilho).progress = brilho + 100
         findViewById<SeekBar>(R.id.sliderContraste).progress = contraste
         findViewById<SeekBar>(R.id.sliderIntensidade).progress = intensidade
+
+        // perfil de daltonismo salvo (RF 13)
+        val perfilSalvo = armazenamento.obterPerfil().first()
+        if (perfilSalvo != ColorBlindnessType.NONE) tipoAtual = perfilSalvo
+
+        // sensibilidade dos alertas (RF 31)
+        val niveis = LightingMonitor.Sensibilidade.values()
+        val indice = preferencias.obterSensibilidade().coerceIn(0, niveis.size - 1)
+        monitorLuz.sensibilidade = niveis[indice]
+        botaoSensibilidade.text = "Sensibilidade dos alertas: " + niveis[indice].rotulo
+
+        // voz (RF 26)
+        val velocidade = preferencias.obterVelocidadeVoz()
+        val volume = preferencias.obterVolumeVoz()
+        locutor.definirVelocidade(velocidade)
+        locutor.definirVolume(volume)
+        findViewById<SeekBar>(R.id.sliderVelocidadeVoz).progress =
+            (((velocidade - 0.5f) / 1.5f) * 100).toInt()
+        findViewById<SeekBar>(R.id.sliderVolumeVoz).progress = (volume * 100).toInt()
+        findViewById<TextView>(R.id.labelVelocidadeVoz).text =
+            "Velocidade da voz: " + String.format("%.1f", velocidade) + "x"
+        findViewById<TextView>(R.id.labelVolumeVoz).text =
+            "Volume da voz: " + (volume * 100).toInt() + "%"
+
         atualizarLabels()
+        atualizarStatus()
     }
 
     private fun configurarControles() {
         findViewById<Button>(R.id.botaoProtanopia).setOnClickListener {
-            tipoAtual = ColorBlindnessType.PROTANOPIA; atualizarStatus()
+            selecionarPerfil(ColorBlindnessType.PROTANOPIA)
         }
         findViewById<Button>(R.id.botaoDeuteranopia).setOnClickListener {
-            tipoAtual = ColorBlindnessType.DEUTERANOPIA; atualizarStatus()
+            selecionarPerfil(ColorBlindnessType.DEUTERANOPIA)
         }
         findViewById<Button>(R.id.botaoTritanopia).setOnClickListener {
-            tipoAtual = ColorBlindnessType.TRITANOPIA; atualizarStatus()
+            selecionarPerfil(ColorBlindnessType.TRITANOPIA)
         }
 
         val botaoLigaDesliga = findViewById<Button>(R.id.botaoLigaDesliga)
@@ -298,7 +426,17 @@ class MainActivity : AppCompatActivity() {
             findViewById<SeekBar>(R.id.sliderBrilho).progress = 100
             findViewById<SeekBar>(R.id.sliderContraste).progress = 100
             findViewById<SeekBar>(R.id.sliderIntensidade).progress = 100
+            aplicarZoom(1f, true)
             atualizarLabels(); salvarConfiguracoes()
+        }
+
+        // alterna entre Baixa, Media e Alta (RF 31)
+        botaoSensibilidade.setOnClickListener {
+            val niveis = LightingMonitor.Sensibilidade.values()
+            val proximo = (monitorLuz.sensibilidade.ordinal + 1) % niveis.size
+            monitorLuz.sensibilidade = niveis[proximo]
+            botaoSensibilidade.text = "Sensibilidade dos alertas: " + niveis[proximo].rotulo
+            lifecycleScope.launch { preferencias.salvarSensibilidade(proximo) }
         }
 
         val botaoIA = findViewById<Button>(R.id.botaoIA)
@@ -315,7 +453,17 @@ class MainActivity : AppCompatActivity() {
             botaoVoz.text = if (vozLigada) "Voz: LIGADA" else "Voz: OFF"
         }
 
+        findViewById<Button>(R.id.botaoHistorico).setOnClickListener { mostrarHistorico() }
+        findViewById<Button>(R.id.botaoAjuda).setOnClickListener { mostrarAjuda() }
+
         atualizarStatus()
+    }
+
+    // RF 10, 13: aplica e salva o perfil escolhido
+    private fun selecionarPerfil(tipo: ColorBlindnessType) {
+        tipoAtual = tipo
+        atualizarStatus()
+        lifecycleScope.launch { armazenamento.salvarPerfil(tipo) }
     }
 
     private fun configurarSliders() {
@@ -343,12 +491,54 @@ class MainActivity : AppCompatActivity() {
                 override fun onStartTrackingTouch(sb: SeekBar?) {}
                 override fun onStopTrackingTouch(sb: SeekBar?) { salvarConfiguracoes() }
             })
+
+        // controle deslizante de zoom (RF 34)
+        sliderZoom.setOnSeekBarChangeListener(
+            object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, valor: Int, user: Boolean) {
+                    if (user) aplicarZoom(1f + (valor / 100f) * 4f, false)
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {}
+            })
+
+        // velocidade da voz (RF 26)
+        findViewById<SeekBar>(R.id.sliderVelocidadeVoz).setOnSeekBarChangeListener(
+            object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, valor: Int, user: Boolean) {
+                    val velocidade = 0.5f + (valor / 100f) * 1.5f
+                    locutor.definirVelocidade(velocidade)
+                    findViewById<TextView>(R.id.labelVelocidadeVoz).text =
+                        "Velocidade da voz: " + String.format("%.1f", velocidade) + "x"
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {
+                    val velocidade = 0.5f + ((sb?.progress ?: 33) / 100f) * 1.5f
+                    lifecycleScope.launch { preferencias.salvarVelocidadeVoz(velocidade) }
+                    if (vozLigada) locutor.falar("Velocidade da voz ajustada")
+                }
+            })
+
+        // volume da voz (RF 26)
+        findViewById<SeekBar>(R.id.sliderVolumeVoz).setOnSeekBarChangeListener(
+            object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, valor: Int, user: Boolean) {
+                    locutor.definirVolume(valor / 100f)
+                    findViewById<TextView>(R.id.labelVolumeVoz).text = "Volume da voz: " + valor + "%"
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {
+                    val volume = (sb?.progress ?: 100) / 100f
+                    lifecycleScope.launch { preferencias.salvarVolumeVoz(volume) }
+                    if (vozLigada) locutor.falar("Volume ajustado")
+                }
+            })
     }
 
     private fun atualizarLabels() {
-        findViewById<TextView>(R.id.labelBrilho).text = "Brilho: $brilho"
-        findViewById<TextView>(R.id.labelContraste).text = "Contraste: $contraste"
-        findViewById<TextView>(R.id.labelIntensidade).text = "Intensidade: $intensidade"
+        findViewById<TextView>(R.id.labelBrilho).text = "Brilho: " + brilho
+        findViewById<TextView>(R.id.labelContraste).text = "Contraste: " + contraste
+        findViewById<TextView>(R.id.labelIntensidade).text = "Intensidade: " + intensidade
     }
 
     private fun salvarConfiguracoes() = lifecycleScope.launch {
@@ -359,7 +549,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun atualizarStatus() {
         val nomeFiltro = if (filtroLigado) tipoAtual.nomeExibicao else "Original"
-        textoStatus.text = "Perfil: $nomeFiltro"
+        textoStatus.text = "Perfil: " + nomeFiltro
     }
 
     private fun solicitarPermissaoCamera() {
@@ -381,7 +571,7 @@ class MainActivity : AppCompatActivity() {
                 val camera = provedor.bindToLifecycle(
                     this, CameraSelector.DEFAULT_BACK_CAMERA, analise
                 )
-                cameraControle = camera.cameraControl   // guarda pra controlar o zoom
+                cameraControle = camera.cameraControl
             } catch (e: Exception) {
                 Log.e("VisaoColor", "Erro ao iniciar a camera", e)
             }
@@ -395,13 +585,11 @@ class MainActivity : AppCompatActivity() {
 
         val agora = System.currentTimeMillis()
 
-        // alerta de iluminacao (a cada 700ms)
         if (agora - ultimaLuzMs > 700) {
             ultimaLuzMs = agora
             verificarIluminacao(original)
         }
 
-        // IA (a cada 600ms)
         if (iaLigada && agora - ultimaDeteccaoMs > 600) {
             ultimaDeteccaoMs = agora
             try {
@@ -423,18 +611,19 @@ class MainActivity : AppCompatActivity() {
         imagem.close()
     }
 
-    // mede a luminosidade media e avisa se estiver escuro ou claro demais
+    // RF 28, 29, 30: alerta visual e sonoro de iluminacao inadequada
     private fun verificarIluminacao(bmp: Bitmap) {
         val pequeno = Bitmap.createScaledBitmap(bmp, 12, 12, true)
         val pixels = mutableListOf<IntArray>()
         for (y in 0 until pequeno.height) {
             for (x in 0 until pequeno.width) {
-                val p = pequeno.getPixel(x, y)
-                pixels.add(intArrayOf(Color.red(p), Color.green(p), Color.blue(p)))
+                val pix = pequeno.getPixel(x, y)
+                pixels.add(intArrayOf(Color.red(pix), Color.green(pix), Color.blue(pix)))
             }
         }
         val luz = monitorLuz.luminanciaMedia(pixels)
         val status = monitorLuz.verificarStatus(luz)
+
         runOnUiThread {
             when (status) {
                 LightingMonitor.Status.ESCURO -> {
@@ -446,6 +635,20 @@ class MainActivity : AppCompatActivity() {
                     textoAlerta.visibility = View.VISIBLE
                 }
                 else -> textoAlerta.visibility = View.GONE
+            }
+
+            // fala o alerta apenas quando a condicao muda, para nao repetir
+            if (status != ultimoStatusLuz) {
+                ultimoStatusLuz = status
+                if (vozLigada) {
+                    when (status) {
+                        LightingMonitor.Status.ESCURO ->
+                            locutor.falar("Ambiente escuro. As cores podem estar imprecisas.")
+                        LightingMonitor.Status.CLARO ->
+                            locutor.falar("Muita luz. As cores podem estar imprecisas.")
+                        else -> { }
+                    }
+                }
             }
         }
     }
@@ -474,7 +677,9 @@ class MainActivity : AppCompatActivity() {
             val caixa = obj.caixaDelimitadora
             canvas.drawRect(caixa, caneta)
 
-            val nome = traduzir(obj.nomeObjeto)
+            // nome e nivel de confianca (RF 22)
+            val confianca = (obj.confianca * 100).toInt()
+            val nome = traduzir(obj.nomeObjeto) + " " + confianca + "%"
             val larguraTexto = texto.measureText(nome)
 
             var textoX = caixa.left
